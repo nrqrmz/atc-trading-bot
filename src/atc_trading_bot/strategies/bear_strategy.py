@@ -25,9 +25,9 @@ class BearStrategy(Strategy):
 
     def next(self):
         if self.rsi[-1] > self.rsi_overbought and self.data.Close[-1] < self.sma[-1]:
-            if self.position.is_long:
+            if not self.position.is_short:
                 self.position.close()
-            self.sell()
+                self.sell()
         elif self.rsi[-1] < self.rsi_oversold:
             if self.position.is_short:
                 self.position.close()

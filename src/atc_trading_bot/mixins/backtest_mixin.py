@@ -1,4 +1,5 @@
 import itertools
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -117,10 +118,12 @@ class BacktestMixin:
                                  n_regimes: int, test_df: pd.DataFrame) -> type[Strategy]:
         """Fit PCA + HMM on training data and select strategy for test data's regime."""
         # Compute features on training data
-        df_ta = ta_lib.add_all_ta_features(
-            train_df.copy(), open="Open", high="High", low="Low",
-            close="Close", volume="Volume", fillna=True,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
+            df_ta = ta_lib.add_all_ta_features(
+                train_df.copy(), open="Open", high="High", low="Low",
+                close="Close", volume="Volume", fillna=True,
+            )
         feature_cols = [c for c in df_ta.columns if c not in ["Open", "High", "Low", "Close", "Volume"]]
         train_features = df_ta[feature_cols]
         non_const = train_features.columns[train_features.std() > 0]
@@ -139,10 +142,12 @@ class BacktestMixin:
         hmm.fit(pca_features)
 
         # Transform test data using the same pipeline
-        df_ta_test = ta_lib.add_all_ta_features(
-            test_df.copy(), open="Open", high="High", low="Low",
-            close="Close", volume="Volume", fillna=True,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
+            df_ta_test = ta_lib.add_all_ta_features(
+                test_df.copy(), open="Open", high="High", low="Low",
+                close="Close", volume="Volume", fillna=True,
+            )
         test_features = df_ta_test[non_const]
         test_scaled = scaler.transform(test_features)
         test_pca = pca.transform(test_scaled)

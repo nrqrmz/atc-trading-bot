@@ -34,6 +34,6 @@ class SidewaysStrategy(Strategy):
                 self.position.close()
                 self.buy()
         elif self.data.Close[-1] >= self.bb_upper[-1] and self.rsi[-1] > self.rsi_overbought:
-            if self.position.is_long:
+            if not self.position.is_short:
                 self.position.close()
-            self.sell()
+                self.sell()

@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import ta
@@ -21,15 +23,17 @@ class FeatureMixin:
         if self.df is None:
             raise ValueError("No data available. Call fetch data first.")
 
-        df_ta = ta.add_all_ta_features(
-            self.df.copy(),
-            open="Open",
-            high="High",
-            low="Low",
-            close="Close",
-            volume="Volume",
-            fillna=True,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
+            df_ta = ta.add_all_ta_features(
+                self.df.copy(),
+                open="Open",
+                high="High",
+                low="Low",
+                close="Close",
+                volume="Volume",
+                fillna=True,
+            )
 
         # Drop original OHLCV columns to keep only indicators
         feature_cols = [c for c in df_ta.columns if c not in ["Open", "High", "Low", "Close", "Volume"]]
