@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from backtesting import Backtest
+from backtesting.lib import FractionalBacktest as Backtest
 
 
 class SignalMixin:
@@ -43,7 +43,7 @@ class SignalMixin:
         recent_df = self.df.iloc[-lookback:].copy()
 
         try:
-            bt = Backtest(recent_df, self.active_strategy, cash=100_000, commission=0.001)
+            bt = Backtest(recent_df, self.active_strategy, cash=100_000, commission=0.001, finalize_trades=True)
             stats = bt.run()
             trades = stats._trades
 

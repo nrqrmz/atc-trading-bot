@@ -36,22 +36,6 @@ fetch_data → compute_features → detect_regime → select_strategy → backte
 
 ## Installation
 
-### From GitHub
-
-```bash
-pip install git+https://github.com/your-username/atc-trading-bot.git
-```
-
-### From source
-
-```bash
-git clone https://github.com/your-username/atc-trading-bot.git
-cd atc-trading-bot
-pip install -e ".[dev]"
-```
-
-### Google Colab
-
 ```python
 !pip install git+https://github.com/your-username/atc-trading-bot.git
 ```

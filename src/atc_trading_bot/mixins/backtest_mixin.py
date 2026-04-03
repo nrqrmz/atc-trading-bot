@@ -2,7 +2,8 @@ import itertools
 
 import numpy as np
 import pandas as pd
-from backtesting import Backtest, Strategy
+from backtesting import Strategy
+from backtesting.lib import FractionalBacktest as Backtest
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from hmmlearn.hmm import GaussianHMM
@@ -27,7 +28,7 @@ class BacktestMixin:
         if strat is None:
             raise ValueError("No strategy selected. Call select_strategy first.")
 
-        bt = Backtest(self.df, strat, cash=cash, commission=commission)
+        bt = Backtest(self.df, strat, cash=cash, commission=commission, finalize_trades=True)
         stats = bt.run()
         self.results = self._extract_metrics(stats)
         return self.results
@@ -102,7 +103,7 @@ class BacktestMixin:
 
             # Backtest on test data
             try:
-                bt = Backtest(test_df, strategy, cash=cash, commission=commission)
+                bt = Backtest(test_df, strategy, cash=cash, commission=commission, finalize_trades=True)
                 stats = bt.run()
                 metrics = self._extract_metrics(stats)
                 metrics["fold"] = test_idx
