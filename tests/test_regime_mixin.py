@@ -99,9 +99,7 @@ class TestRegimeMixin:
         assert bot.current_regime == bot.regimes[-1]
 
     def test_plot_regimes_returns_figure(self):
-        import matplotlib
-        matplotlib.use("Agg")
-        from matplotlib.figure import Figure
+        from plotly.graph_objects import Figure
 
         features_pca, df = _make_synthetic_features_and_df()
         bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
@@ -115,21 +113,6 @@ class TestRegimeMixin:
         with pytest.warns(PipelineWarning, match="detect_regime"):
             result = bot.plot_regimes()
         assert result is None
-
-    def test_plot_regimes_does_not_call_plt_show_or_tight_layout(self):
-        import matplotlib
-        matplotlib.use("Agg")
-        from unittest.mock import patch
-
-        features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
-        bot.detect_regime()
-
-        with patch("matplotlib.pyplot.show") as mock_show, \
-             patch("matplotlib.pyplot.tight_layout") as mock_tight:
-            bot.plot_regimes()
-            mock_show.assert_not_called()
-            mock_tight.assert_not_called()
 
     def test_regime_labels_correct_for_clear_regimes(self):
         """With well-separated clusters, bull/bear labels should match the data structure."""

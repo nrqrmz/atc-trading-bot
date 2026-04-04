@@ -72,10 +72,16 @@ print(bot.df)
 # 2. Compute technical indicators + PCA
 bot.compute_features(n_components=10)
 
+# Inspect what PCA did
+bot.features_summary()
+
 # 3. Detect market regime
 bot.detect_regime(n_regimes=3)
 print(f"Current regime: {bot.current_regime}")
 print(f"Regime metrics: {bot.regime_metrics}")
+
+# Visualize regimes on price chart
+bot.plot_regimes()
 
 # 4. Select strategy based on regime
 strategy = bot.select_strategy()
@@ -166,6 +172,10 @@ bot.fetch_data("BTC", use_cache=True)
 | Attribute | Type | Description |
 |---|---|---|
 | `df` | `DataFrame \| None` | OHLCV DataFrame after calling `fetch_data()` |
+| `features` | `DataFrame \| None` | TA indicator features after `compute_features()` |
+| `features_pca` | `ndarray \| None` | PCA-reduced features after `compute_features()` |
+| `regimes` | `list[str] \| None` | Regime labels per candle after `detect_regime()` |
+| `current_regime` | `str \| None` | Latest detected regime (bull/bear/sideways) |
 
 ### Methods
 
@@ -179,6 +189,8 @@ bot.fetch_data("BTC", use_cache=True)
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct)` | CPCV validation |
 | `generate_signals()` | Generate buy/sell/hold signals |
 | `run_pipeline(symbol="BTC")` | Execute full pipeline end-to-end |
+| `features_summary(top_n)` | Print PCA reduction summary (features, variance, top weights) |
+| `plot_regimes()` | Interactive Plotly chart of price colored by regime |
 
 ## Running Tests
 

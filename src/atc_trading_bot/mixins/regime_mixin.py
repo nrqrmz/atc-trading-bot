@@ -105,33 +105,46 @@ class RegimeMixin:
             warnings.warn("No regimes detected. Call detect_regime first.", PipelineWarning)
             return
 
-        import matplotlib.pyplot as plt
+        import plotly.graph_objects as go
 
         regime_colors = {"bull": "#2ecc71", "bear": "#e74c3c", "sideways": "#f1c40f"}
 
         # Use aligned data (features_index) for regime spans
         plot_df = self.df.loc[self.features_index]
 
-        fig, ax = plt.subplots(figsize=(14, 5))
-        ax.plot(plot_df.index, plot_df["Close"], color="black", linewidth=0.8)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["Close"],
+            mode="lines", name="Price",
+            line=dict(color="black", width=1),
+        ))
 
         # Color background spans by regime
+        added_labels = set()
         start = 0
         for i in range(1, len(self.regimes)):
             if self.regimes[i] != self.regimes[start] or i == len(self.regimes) - 1:
                 end = i if self.regimes[i] != self.regimes[start] else i + 1
-                color = regime_colors.get(self.regimes[start], "#cccccc")
-                ax.axvspan(plot_df.index[start], plot_df.index[min(end, len(plot_df) - 1)],
-                           alpha=0.25, color=color)
+                regime = self.regimes[start]
+                color = regime_colors.get(regime, "#cccccc")
+                show_legend = regime not in added_labels
+                added_labels.add(regime)
+                fig.add_vrect(
+                    x0=plot_df.index[start],
+                    x1=plot_df.index[min(end, len(plot_df) - 1)],
+                    fillcolor=color, opacity=0.2,
+                    layer="below", line_width=0,
+                    annotation_text=regime if show_legend else None,
+                    annotation_position="top left",
+                )
                 start = i
 
-        ax.set_title(f"Regime Detection — Current: {self.current_regime}")
-        ax.set_ylabel("Price")
+        fig.update_layout(
+            title=f"Regime Detection — Current: {self.current_regime}",
+            yaxis_title="Price",
+            template="plotly_dark",
+            hovermode="x unified",
+        )
 
-        # Legend
-        from matplotlib.patches import Patch
-        legend = [Patch(facecolor=c, alpha=0.25, label=r) for r, c in regime_colors.items()]
-        ax.legend(handles=legend, loc="upper left")
-
-        fig.tight_layout()
+        fig.show()
         return fig
