@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from unittest.mock import MagicMock
 
 from atc_trading_bot.mixins.signal_mixin import SignalMixin
 from atc_trading_bot.pipeline_warning import PipelineWarning
@@ -14,6 +15,8 @@ class SignalBot(SignalMixin):
         self.df = kwargs.pop("df", None)
         self.current_regime = kwargs.pop("current_regime", None)
         self.active_strategy = kwargs.pop("active_strategy", None)
+        self.hmm_model = kwargs.pop("hmm_model", None)
+        self.features_pca = kwargs.pop("features_pca", None)
         super().__init__(**kwargs)
 
 
@@ -44,6 +47,7 @@ class TestSignalMixin:
         assert "regime" in signals
         assert "strategy" in signals
         assert "signal" in signals
+        assert "confidence" in signals
 
     def test_signal_is_valid(self, trending_data):
         bot = SignalBot(df=trending_data, current_regime="bull", active_strategy=BullStrategy)
@@ -81,3 +85,91 @@ class TestSignalMixin:
         with pytest.warns(PipelineWarning, match="select_strategy"):
             result = bot.generate_signals()
         assert result is None
+
+
+class TestConfidenceThresholding:
+    def test_confidence_defaults_to_one_without_hmm(self, trending_data):
+        bot = SignalBot(df=trending_data, current_regime="bull", active_strategy=BullStrategy)
+        confidence = bot._compute_confidence()
+        assert confidence == 1.0
+
+    def test_confidence_from_hmm_posteriors(self, trending_data):
+        n_features = 5
+        n_obs = len(trending_data)
+        features_pca = np.random.randn(n_obs, n_features)
+
+        mock_hmm = MagicMock()
+        posteriors = np.array([[0.8, 0.1, 0.1]] * n_obs)
+        mock_hmm.predict_proba.return_value = posteriors
+        mock_hmm.predict.return_value = np.array([0])
+
+        bot = SignalBot(
+            df=trending_data, current_regime="bull", active_strategy=BullStrategy,
+            hmm_model=mock_hmm, features_pca=features_pca,
+        )
+        confidence = bot._compute_confidence()
+        assert 0 < confidence <= 1.0
+        assert confidence == 0.8
+
+    def test_low_confidence_overrides_to_hold(self, trending_data):
+        n_obs = len(trending_data)
+        features_pca = np.random.randn(n_obs, 5)
+
+        mock_hmm = MagicMock()
+        # Very low confidence for predicted state
+        posteriors = np.array([[0.35, 0.33, 0.32]] * n_obs)
+        mock_hmm.predict_proba.return_value = posteriors
+        mock_hmm.predict.return_value = np.array([0])
+
+        bot = SignalBot(
+            df=trending_data, current_regime="bull", active_strategy=BullStrategy,
+            hmm_model=mock_hmm, features_pca=features_pca,
+        )
+        signals = bot.generate_signals(confidence_threshold=0.6)
+
+        assert signals["signal"] == "hold"
+        assert signals["confidence"] == 0.35
+
+    def test_high_confidence_allows_signal(self, trending_data):
+        n_obs = len(trending_data)
+        features_pca = np.random.randn(n_obs, 5)
+
+        mock_hmm = MagicMock()
+        posteriors = np.array([[0.9, 0.05, 0.05]] * n_obs)
+        mock_hmm.predict_proba.return_value = posteriors
+        mock_hmm.predict.return_value = np.array([0])
+
+        bot = SignalBot(
+            df=trending_data, current_regime="bull", active_strategy=BullStrategy,
+            hmm_model=mock_hmm, features_pca=features_pca,
+        )
+        signals = bot.generate_signals(confidence_threshold=0.6)
+
+        assert signals["confidence"] == 0.9
+        # Signal can be buy, sell, or hold — but not forced to hold by confidence
+        assert signals["signal"] in ("buy", "sell", "hold")
+
+    def test_zero_threshold_disables_filtering(self, trending_data):
+        n_obs = len(trending_data)
+        features_pca = np.random.randn(n_obs, 5)
+
+        mock_hmm = MagicMock()
+        posteriors = np.array([[0.35, 0.33, 0.32]] * n_obs)
+        mock_hmm.predict_proba.return_value = posteriors
+        mock_hmm.predict.return_value = np.array([0])
+
+        bot = SignalBot(
+            df=trending_data, current_regime="bull", active_strategy=BullStrategy,
+            hmm_model=mock_hmm, features_pca=features_pca,
+        )
+        signals = bot.generate_signals(confidence_threshold=0)
+        # With threshold=0, confidence filtering is disabled
+        assert signals["confidence"] == 0.35
+
+    def test_confidence_in_output(self, trending_data):
+        bot = SignalBot(df=trending_data, current_regime="bull", active_strategy=BullStrategy)
+        signals = bot.generate_signals()
+
+        assert "confidence" in signals
+        assert isinstance(signals["confidence"], float)
+        assert 0 <= signals["confidence"] <= 1

@@ -2,6 +2,24 @@ import itertools
 import warnings
 
 import numpy as np
+from atc_trading_bot.config import (
+    CORRELATION_THRESHOLD,
+    DEFAULT_CASH,
+    DEFAULT_COMMISSION,
+    DEFAULT_CPCV_SPLITS,
+    DEFAULT_EMBARGO_PCT,
+    DEFAULT_LEVERAGE,
+    DEFAULT_N_COMPONENTS,
+    DEFAULT_N_REGIMES,
+    DEFAULT_PURGE_GAP,
+    DEFAULT_TEST_RATIO,
+    EXCLUDE_COLS,
+    METRIC_DESCRIPTIONS,
+    MIN_TEST_BARS,
+    MIN_TRAIN_BARS,
+    NAN_COLUMN_THRESHOLD,
+    OVERFIT_THRESHOLD,
+)
 from atc_trading_bot.pipeline_warning import PipelineWarning
 import pandas as pd
 from backtesting import Strategy
@@ -12,21 +30,23 @@ from sklearn.preprocessing import StandardScaler
 from hmmlearn.hmm import GaussianHMM
 import ta as ta_lib
 
-_METRIC_DESCRIPTIONS = {
-    "sharpe_ratio": "Risk-adjusted return (annualized)",
-    "sortino_ratio": "Downside risk-adjusted return",
-    "max_drawdown": "Worst peak-to-trough decline",
-    "calmar_ratio": "Annual return / Max drawdown",
-    "win_rate": "Percentage of winning trades",
-    "profit_factor": "Gross profit / Gross loss",
-    "total_return": "Total strategy return",
-    "buy_and_hold_return": "Buy & hold benchmark return",
-    "num_trades": "Number of trades executed",
-}
-
 
 class BacktestMixin:
     """Mixin for backtesting strategies and CPCV cross-validation."""
+
+    def _require_data(self) -> bool:
+        """Check that OHLCV data has been loaded."""
+        if getattr(self, "df", None) is None:
+            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
+            return False
+        return True
+
+    def _require_strategy(self) -> bool:
+        """Check that a strategy has been selected."""
+        if getattr(self, "active_strategy", None) is None:
+            warnings.warn("No strategy selected. Call select_strategy first.", PipelineWarning)
+            return False
+        return True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -34,9 +54,10 @@ class BacktestMixin:
         self.cv_results: list[dict] | None = None
 
     def backtest(self, strategy: type[Strategy] | None = None,
-                 cash: float = 100_000, commission: float = 0.001,
-                 test_ratio: float = 0.3, n_components: int | None = None,
-                 n_regimes: int | None = None) -> pd.DataFrame:
+                 cash: float = DEFAULT_CASH, commission: float = DEFAULT_COMMISSION,
+                 test_ratio: float = DEFAULT_TEST_RATIO, n_components: int | None = None,
+                 n_regimes: int | None = None,
+                 leverage: int = DEFAULT_LEVERAGE) -> pd.DataFrame:
         """Run an out-of-sample backtest with train/test split.
 
         Splits data into train/test using test_ratio. When no explicit strategy
@@ -51,23 +72,24 @@ class BacktestMixin:
             test_ratio: Fraction of data to use as test set. Default: 0.3.
             n_components: PCA components for refit. Defaults to fitted value.
             n_regimes: HMM regimes for refit. Defaults to fitted value.
+            leverage: Leverage multiplier. When > 1, sets margin=1/leverage
+                on the Backtest constructor (e.g. leverage=2 → margin=0.5).
+                Default: 1 (no leverage).
 
         Returns:
             DataFrame with columns (metric, value, description) including
             backtest date range, or None if prerequisites are missing.
         """
-        if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
+        if not self._require_data():
             return
 
-        if strategy is None and self.active_strategy is None:
-            warnings.warn("No strategy selected. Call select_strategy first.", PipelineWarning)
+        if strategy is None and not self._require_strategy():
             return
 
         if n_components is None:
-            n_components = getattr(self.pca, "n_components_", 10) if hasattr(self, "pca") and self.pca is not None else 10
+            n_components = getattr(self.pca, "n_components_", DEFAULT_N_COMPONENTS) if hasattr(self, "pca") and self.pca is not None else DEFAULT_N_COMPONENTS
         if n_regimes is None:
-            n_regimes = getattr(self.hmm_model, "n_components", 3) if hasattr(self, "hmm_model") and self.hmm_model is not None else 3
+            n_regimes = getattr(self.hmm_model, "n_components", DEFAULT_N_REGIMES) if hasattr(self, "hmm_model") and self.hmm_model is not None else DEFAULT_N_REGIMES
 
         train_df, test_df = train_test_split(self.df, test_size=test_ratio, shuffle=False)
 
@@ -79,9 +101,25 @@ class BacktestMixin:
                 test_df=test_df,
             )
 
-        bt = Backtest(test_df, strat, cash=cash, commission=commission, finalize_trades=True)
+        # Build extra kwargs for leverage (margin trading)
+        bt_kwargs = {}
+        if leverage > 1:
+            bt_kwargs["margin"] = 1 / leverage
+
+        # Run backtest on test data (out-of-sample)
+        bt = Backtest(test_df, strat, cash=cash, commission=commission, finalize_trades=True, **bt_kwargs)
         stats = bt.run()
         metrics_dict = self._extract_metrics(stats, test_df=test_df)
+
+        # Run backtest on train data (in-sample) for overfitting comparison
+        try:
+            bt_train = Backtest(train_df, strat, cash=cash, commission=commission, finalize_trades=True, **bt_kwargs)
+            train_stats = bt_train.run()
+            train_metrics = self._extract_metrics(train_stats, test_df=train_df)
+            self._check_overfit(train_metrics, metrics_dict)
+        except Exception:
+            pass
+
         self.results = self._metrics_to_dataframe(
             metrics_dict,
             start_date=test_df.index[0],
@@ -89,10 +127,13 @@ class BacktestMixin:
         )
         return self.results
 
-    def cross_validate_cpcv(self, n_splits: int = 5, purge_gap: int = 5,
-                            embargo_pct: float = 0.01, n_components: int = 10,
-                            n_regimes: int = 3, cash: float = 100_000,
-                            commission: float = 0.001) -> list[dict]:
+    def cross_validate_cpcv(self, n_splits: int = DEFAULT_CPCV_SPLITS,
+                            purge_gap: int = DEFAULT_PURGE_GAP,
+                            embargo_pct: float = DEFAULT_EMBARGO_PCT,
+                            n_components: int = DEFAULT_N_COMPONENTS,
+                            n_regimes: int = DEFAULT_N_REGIMES,
+                            cash: float = DEFAULT_CASH,
+                            commission: float = DEFAULT_COMMISSION) -> list[dict]:
         """Combinatorial Purged Cross-Validation.
 
         Generates all C(n_splits, 2) train/test combinations where each
@@ -100,8 +141,7 @@ class BacktestMixin:
         Purging removes observations near the train/test boundary.
         Embargo adds an additional gap after each test set.
         """
-        if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
+        if not self._require_data():
             return
 
         n = len(self.df)
@@ -140,13 +180,13 @@ class BacktestMixin:
                 if purged_start < purged_end:
                     train_indices.extend(range(purged_start, purged_end))
 
-            if len(train_indices) < 50:
+            if len(train_indices) < MIN_TRAIN_BARS:
                 continue
 
             train_df = self.df.iloc[train_indices]
             test_df = self.df.iloc[test_start:test_end]
 
-            if len(test_df) < 30:
+            if len(test_df) < MIN_TEST_BARS:
                 continue
 
             # Refit pipeline on training data only
@@ -170,10 +210,38 @@ class BacktestMixin:
 
         return self.cv_results
 
+    @staticmethod
+    def _check_overfit(train_metrics: dict, test_metrics: dict,
+                       threshold: float = OVERFIT_THRESHOLD) -> list[str]:
+        """Compare in-sample vs out-of-sample metrics and warn on overfitting.
+
+        Returns list of warning messages (empty if no overfitting detected).
+        """
+        overfit_warnings = []
+        metrics_to_check = ["sharpe_ratio", "total_return"]
+
+        for metric in metrics_to_check:
+            train_val = train_metrics.get(metric, 0)
+            test_val = test_metrics.get(metric, 0)
+
+            # Only compare when train metric is meaningfully positive
+            if train_val > 0.01:
+                ratio = test_val / train_val
+                if ratio < threshold:
+                    pct = (1 - ratio) * 100
+                    msg = (
+                        f"Possible overfitting: {metric} degraded {pct:.0f}% "
+                        f"from train ({train_val:.3f}) to test ({test_val:.3f})."
+                    )
+                    overfit_warnings.append(msg)
+                    warnings.warn(msg, PipelineWarning)
+
+        return overfit_warnings
+
     def _fit_and_select_strategy(self, train_df: pd.DataFrame, n_components: int,
                                  n_regimes: int, test_df: pd.DataFrame) -> type[Strategy]:
         """Fit PCA + HMM on training data and select strategy for test data's regime."""
-        from atc_trading_bot.mixins.feature_mixin import _EXCLUDE_COLS, _CORRELATION_THRESHOLD
+        # Config values already imported at module level
 
         # Compute features on training data
         with warnings.catch_warnings():
@@ -182,13 +250,13 @@ class BacktestMixin:
                 train_df.copy(), open="Open", high="High", low="Low",
                 close="Close", volume="Volume", fillna=False,
             )
-        feature_cols = [c for c in df_ta.columns if c not in _EXCLUDE_COLS]
+        feature_cols = [c for c in df_ta.columns if c not in EXCLUDE_COLS]
         train_features = df_ta[feature_cols].copy()
 
         # Clean: forward fill, replace inf, drop NaN
         train_features.ffill(inplace=True)
         train_features.replace([np.inf, -np.inf], np.nan, inplace=True)
-        thresh = int(len(train_features) * 0.5)
+        thresh = int(len(train_features) * NAN_COLUMN_THRESHOLD)
         train_features.dropna(axis=1, thresh=thresh, inplace=True)
         train_features.dropna(inplace=True)
 
@@ -200,7 +268,7 @@ class BacktestMixin:
 
         corr = train_features.corr().abs()
         upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-        corr_drop = [col for col in upper.columns if any(upper[col] > _CORRELATION_THRESHOLD)]
+        corr_drop = [col for col in upper.columns if any(upper[col] > CORRELATION_THRESHOLD)]
         train_features = train_features.drop(columns=corr_drop)
         kept_cols = train_features.columns
 
@@ -288,6 +356,6 @@ class BacktestMixin:
             rows.append({
                 "metric": key,
                 "value": value,
-                "description": _METRIC_DESCRIPTIONS.get(key, ""),
+                "description": METRIC_DESCRIPTIONS.get(key, ""),
             })
         return pd.DataFrame(rows)

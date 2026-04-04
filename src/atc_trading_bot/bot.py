@@ -1,12 +1,22 @@
+from atc_trading_bot.config import DEFAULT_N_COMPONENTS, DEFAULT_N_REGIMES
 from atc_trading_bot.mixins.backtest_mixin import BacktestMixin
 from atc_trading_bot.mixins.data_mixin import DataMixin
 from atc_trading_bot.mixins.feature_mixin import FeatureMixin
+from atc_trading_bot.mixins.persistence_mixin import PersistenceMixin
 from atc_trading_bot.mixins.regime_mixin import RegimeMixin
+from atc_trading_bot.mixins.scanner_mixin import ScannerMixin
+from atc_trading_bot.mixins.sentiment_mixin import SentimentMixin
 from atc_trading_bot.mixins.signal_mixin import SignalMixin
 from atc_trading_bot.mixins.strategy_mixin import StrategyMixin
+from atc_trading_bot.mixins.trading_mixin import TradingMixin
+from atc_trading_bot.mixins.visualization_mixin import VisualizationMixin
 
 
-class Bot(SignalMixin, BacktestMixin, StrategyMixin, RegimeMixin, FeatureMixin, DataMixin):
+class Bot(
+    TradingMixin, ScannerMixin, SentimentMixin, VisualizationMixin,
+    PersistenceMixin, SignalMixin, BacktestMixin, StrategyMixin,
+    RegimeMixin, FeatureMixin, DataMixin,
+):
     """Trading bot composing all mixins.
 
     Pipeline: fetch_data → compute_features → detect_regime → select_strategy → backtest → generate_signals
@@ -20,8 +30,9 @@ class Bot(SignalMixin, BacktestMixin, StrategyMixin, RegimeMixin, FeatureMixin, 
         data_dir: Directory for CSV cache. Default: "data/" relative to project root.
     """
 
-    def run_pipeline(self, symbol: str = "BTC", n_components: int = 10,
-                     n_regimes: int = 3) -> dict:
+    def run_pipeline(self, symbol: str = "BTC",
+                     n_components: int = DEFAULT_N_COMPONENTS,
+                     n_regimes: int = DEFAULT_N_REGIMES) -> dict:
         """Execute the full pipeline for a symbol and return signals.
 
         Args:

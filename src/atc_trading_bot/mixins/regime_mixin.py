@@ -1,6 +1,13 @@
 import warnings
 
 import numpy as np
+from atc_trading_bot.config import (
+    DEFAULT_HMM_N_ITER,
+    DEFAULT_N_REGIMES,
+    MIN_REGIME_DURATION,
+    REGIME_COLORS,
+    STICKY_TRANSITION_PROB,
+)
 from atc_trading_bot.pipeline_warning import PipelineWarning
 from hmmlearn.hmm import GaussianHMM
 
@@ -10,6 +17,20 @@ class RegimeMixin:
 
     REGIME_LABELS = ["bull", "bear", "sideways"]
 
+    def _require_features(self) -> bool:
+        """Check that PCA features have been computed."""
+        if getattr(self, "features_pca", None) is None:
+            warnings.warn("No features available. Call compute_features first.", PipelineWarning)
+            return False
+        return True
+
+    def _require_regime(self) -> bool:
+        """Check that regimes have been detected."""
+        if getattr(self, "current_regime", None) is None:
+            warnings.warn("No regime detected. Call detect_regime first.", PipelineWarning)
+            return False
+        return True
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.regimes: list[str] | None = None
@@ -17,15 +38,15 @@ class RegimeMixin:
         self.hmm_model: GaussianHMM | None = None
         self.regime_metrics: dict | None = None
 
-    def detect_regime(self, n_regimes: int = 3, n_iter: int = 100) -> None:
+    def detect_regime(self, n_regimes: int = DEFAULT_N_REGIMES,
+                      n_iter: int = DEFAULT_HMM_N_ITER):
         """Train HMM on PCA features and predict regimes.
 
         Args:
             n_regimes: Number of hidden states (regimes) for the HMM. Default: 3.
             n_iter: Maximum EM iterations for HMM training. Default: 100.
         """
-        if self.features_pca is None:
-            warnings.warn("No features available. Call compute_features first.", PipelineWarning)
+        if not self._require_features():
             return
 
         model = GaussianHMM(
@@ -37,17 +58,18 @@ class RegimeMixin:
             params="stmc",
         )
         # Sticky transition matrix: regimes persist (~20 bars avg duration)
-        off_diag = 0.05 / (n_regimes - 1)
+        off_diag = (1 - STICKY_TRANSITION_PROB) / (n_regimes - 1)
         model.transmat_ = np.full((n_regimes, n_regimes), off_diag)
-        np.fill_diagonal(model.transmat_, 0.95)
+        np.fill_diagonal(model.transmat_, STICKY_TRANSITION_PROB)
         model.fit(self.features_pca)
         self.hmm_model = model
 
         hidden_states = model.predict(self.features_pca)
         self.regimes = self._map_states_to_labels(hidden_states)
-        self.regimes = self._smooth_regimes(self.regimes, min_duration=5)
+        self.regimes = self._smooth_regimes(self.regimes, min_duration=MIN_REGIME_DURATION)
         self.current_regime = self.regimes[-1]
         self.regime_metrics = self._compute_metrics(hidden_states)
+        return self
 
     def _map_states_to_labels(self, states: np.ndarray) -> list[str]:
         """Map HMM state indices to bull/bear/sideways by mean return per state."""
@@ -131,13 +153,12 @@ class RegimeMixin:
         Returns:
             matplotlib Figure, or None if no regimes detected.
         """
-        if self.regimes is None or self.df is None:
-            warnings.warn("No regimes detected. Call detect_regime first.", PipelineWarning)
+        if not self._require_regime():
             return
 
         import plotly.graph_objects as go
 
-        regime_colors = {"bull": "#2ecc71", "bear": "#e74c3c", "sideways": "#f1c40f"}
+        regime_colors = REGIME_COLORS
 
         # Use aligned data (features_index) for regime spans
         plot_df = self.df.loc[self.features_index]

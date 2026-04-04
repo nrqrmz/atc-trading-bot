@@ -40,8 +40,11 @@ class DataMixin:
         return f"{symbol}/USDT"
 
     def fetch_data(self, symbol: str | None = None, timeframe: str | None = None,
-                   since: str | None = None, use_cache: bool = False) -> pd.DataFrame | None:
-        """Fetch OHLCV data for a symbol. Uses cache if available and requested.
+                   since: str | None = None, use_cache: bool = False):
+        """Fetch OHLCV data for a symbol with automatic pagination.
+
+        Handles exchange API limits by paginating through multiple requests
+        when a start date is provided. Supports method chaining.
 
         Args:
             symbol: Trading pair, e.g. "BTC" or "BTC/USDT". Case insensitive.
@@ -51,7 +54,7 @@ class DataMixin:
             use_cache: If True, load from CSV cache before hitting the exchange.
 
         Returns:
-            DataFrame with OHLCV columns, or None if no symbol is available.
+            self (for method chaining), or None if no symbol is available.
         """
         if symbol is None:
             if self.symbols:
@@ -70,16 +73,39 @@ class DataMixin:
             cached = self._load_cache(symbol, tf)
             if cached is not None:
                 self.df = cached
-                return self.df
+                return self
 
         since_ts = None
         if since:
             since_ts = self.exchange.parse8601(since)
 
-        raw = self.exchange.fetch_ohlcv(symbol, tf, since=since_ts)
+        raw = self._fetch_with_pagination(symbol, tf, since_ts)
         self.df = self._raw_to_dataframe(raw)
         self._save_cache(symbol, tf)
-        return self.df
+        return self
+
+    def _fetch_with_pagination(self, symbol: str, timeframe: str,
+                               since_ts: int | None, limit: int = 1000) -> list[list]:
+        """Fetch OHLCV data with automatic pagination for large date ranges."""
+        if since_ts is None:
+            return self.exchange.fetch_ohlcv(symbol, timeframe, since=None, limit=limit)
+
+        all_data = []
+        current_since = since_ts
+        while True:
+            batch = self.exchange.fetch_ohlcv(symbol, timeframe, since=current_since, limit=limit)
+            if not batch:
+                break
+            all_data.extend(batch)
+            # Move to the next batch (last timestamp + 1ms)
+            last_ts = batch[-1][0]
+            if last_ts == current_since:
+                break
+            current_since = last_ts + 1
+            # Stop if batch is smaller than limit (no more data)
+            if len(batch) < limit:
+                break
+        return all_data
 
     def _raw_to_dataframe(self, raw: list[list]) -> pd.DataFrame:
         """Convert raw CCXT OHLCV data to a DataFrame."""
@@ -87,6 +113,7 @@ class DataMixin:
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         df.set_index("timestamp", inplace=True)
         df.index.name = None
+        df = df[~df.index.duplicated(keep="last")]
         return df
 
     def _cache_filename(self, symbol: str, timeframe: str) -> str:

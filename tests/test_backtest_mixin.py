@@ -123,3 +123,56 @@ class TestBacktestMixin:
         bot.cross_validate_cpcv(n_splits=3)
 
         assert bot.cv_results is not None
+
+
+class TestOverfitDetection:
+    def test_check_overfit_warns_on_degraded_sharpe(self):
+        train = {"sharpe_ratio": 2.0, "total_return": 0.5}
+        test = {"sharpe_ratio": 0.3, "total_return": 0.4}
+        bot = BacktestBot()
+
+        with pytest.warns(PipelineWarning, match="overfitting.*sharpe_ratio"):
+            warns = bot._check_overfit(train, test)
+
+        assert len(warns) >= 1
+        assert "sharpe_ratio" in warns[0]
+
+    def test_check_overfit_warns_on_degraded_return(self):
+        train = {"sharpe_ratio": 1.0, "total_return": 0.5}
+        test = {"sharpe_ratio": 0.8, "total_return": 0.1}
+
+        with pytest.warns(PipelineWarning, match="overfitting.*total_return"):
+            warns = BacktestMixin._check_overfit(train, test)
+
+        assert any("total_return" in w for w in warns)
+
+    def test_check_overfit_no_warning_when_healthy(self):
+        train = {"sharpe_ratio": 1.5, "total_return": 0.3}
+        test = {"sharpe_ratio": 1.2, "total_return": 0.25}
+
+        warns = BacktestMixin._check_overfit(train, test)
+        assert warns == []
+
+    def test_check_overfit_skips_negative_train(self):
+        train = {"sharpe_ratio": -0.5, "total_return": -0.1}
+        test = {"sharpe_ratio": 0.1, "total_return": 0.05}
+
+        warns = BacktestMixin._check_overfit(train, test)
+        assert warns == []
+
+    def test_check_overfit_custom_threshold(self):
+        train = {"sharpe_ratio": 1.0, "total_return": 0.3}
+        test = {"sharpe_ratio": 0.8, "total_return": 0.25}
+
+        # With strict threshold (0.9), 0.8/1.0 = 0.8 < 0.9 should warn
+        with pytest.warns(PipelineWarning):
+            warns = BacktestMixin._check_overfit(train, test, threshold=0.9)
+        assert len(warns) >= 1
+
+    def test_backtest_runs_overfit_check(self, long_ohlcv_data):
+        bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
+        bot.select_strategy()
+        results = bot.backtest()
+
+        # Should run without error; overfitting check happens internally
+        assert isinstance(results, pd.DataFrame)

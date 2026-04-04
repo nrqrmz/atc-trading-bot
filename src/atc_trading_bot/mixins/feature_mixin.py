@@ -1,36 +1,35 @@
 import warnings
 
 import numpy as np
+from atc_trading_bot.config import (
+    CORRELATION_THRESHOLD,
+    DEFAULT_N_COMPONENTS,
+    EXCLUDE_COLS,
+    NAN_COLUMN_THRESHOLD,
+)
 from atc_trading_bot.pipeline_warning import PipelineWarning
 import pandas as pd
 import ta
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-# Features to exclude from regime detection
-_EXCLUDE_COLS = {
-    # Raw OHLCV
-    "Open", "High", "Low", "Close", "Volume",
-    # Binary (0/1 only — not continuous)
-    "volatility_bbhi", "volatility_bbli",
-    "volatility_kchi", "volatility_kcli",
-    "trend_psar_up_indicator", "trend_psar_down_indicator",
-    # Price-level (scale-dependent, redundant with %B/width)
-    "trend_ema_fast", "trend_ema_slow",
-    "trend_sma_fast", "trend_sma_slow",
-    "volatility_bbh", "volatility_bbl", "volatility_bbm",
-    "volatility_kch", "volatility_kcl", "volatility_kcc",
-    # Accumulative (no ceiling, non-stationary)
-    "volume_adi", "volume_obv", "volume_vpt",
-    "volume_nvi", "others_cr", "volume_vwap",
-}
-
-_CORRELATION_THRESHOLD = 0.95
-_NAN_COLUMN_THRESHOLD = 0.5
-
 
 class FeatureMixin:
     """Mixin for computing technical indicators, standardizing, and applying PCA."""
+
+    def _require_data(self) -> bool:
+        """Check that OHLCV data has been loaded."""
+        if getattr(self, "df", None) is None:
+            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
+            return False
+        return True
+
+    def _require_features(self) -> bool:
+        """Check that PCA features have been computed."""
+        if getattr(self, "features_pca", None) is None:
+            warnings.warn("No features available. Call compute_features first.", PipelineWarning)
+            return False
+        return True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -41,14 +40,13 @@ class FeatureMixin:
         self.scaler: StandardScaler | None = None
         self.pca: PCA | None = None
 
-    def compute_features(self, n_components: int = 10) -> None:
+    def compute_features(self, n_components: int = DEFAULT_N_COMPONENTS):
         """Compute TA features, standardize, and apply PCA.
 
         Args:
             n_components: Number of PCA components to retain. Capped to available features.
         """
-        if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
+        if not self._require_data():
             return
 
         with warnings.catch_warnings():
@@ -64,7 +62,7 @@ class FeatureMixin:
             )
 
         # Exclude problematic features (binary, price-level, accumulative)
-        feature_cols = [c for c in df_ta.columns if c not in _EXCLUDE_COLS]
+        feature_cols = [c for c in df_ta.columns if c not in EXCLUDE_COLS]
         self.features = df_ta[feature_cols].copy()
 
         # Clean: forward fill, replace inf
@@ -72,7 +70,7 @@ class FeatureMixin:
         self.features.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         # Drop columns with >50% NaN, then drop remaining NaN rows (indicator warmup)
-        thresh = int(len(self.features) * _NAN_COLUMN_THRESHOLD)
+        thresh = int(len(self.features) * NAN_COLUMN_THRESHOLD)
         self.features.dropna(axis=1, thresh=thresh, inplace=True)
         self.features.dropna(inplace=True)
 
@@ -86,7 +84,7 @@ class FeatureMixin:
         # Remove highly correlated features (|r| > threshold)
         corr = self.features.corr().abs()
         upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-        to_drop = [col for col in upper.columns if any(upper[col] > _CORRELATION_THRESHOLD)]
+        to_drop = [col for col in upper.columns if any(upper[col] > CORRELATION_THRESHOLD)]
         self.features = self.features.drop(columns=to_drop)
 
         # Standardize
@@ -97,6 +95,7 @@ class FeatureMixin:
         actual_components = min(n_components, self.features_scaled.shape[1])
         self.pca = PCA(n_components=actual_components)
         self.features_pca = self.pca.fit_transform(self.features_scaled)
+        return self
 
     def features_summary(self, top_n: int = 5) -> None:
         """Print a summary of computed features and PCA reduction.
@@ -104,8 +103,7 @@ class FeatureMixin:
         Args:
             top_n: Number of top features to show per PCA component. Default: 5.
         """
-        if self.features is None or self.pca is None:
-            warnings.warn("No features computed. Call compute_features first.", PipelineWarning)
+        if not self._require_features():
             return
 
         total = self.features.shape[1]

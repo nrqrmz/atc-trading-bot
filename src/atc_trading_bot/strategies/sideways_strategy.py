@@ -1,6 +1,8 @@
 import pandas as pd
 from backtesting import Strategy
 
+from atc_trading_bot.config import DEFAULT_POSITION_SIZE, DEFAULT_STOP_LOSS, DEFAULT_TAKE_PROFIT
+
 
 def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     delta = close.diff()
@@ -18,6 +20,9 @@ class SidewaysStrategy(Strategy):
     rsi_period = 14
     rsi_overbought = 70
     rsi_oversold = 30
+    stop_loss = DEFAULT_STOP_LOSS
+    take_profit = DEFAULT_TAKE_PROFIT
+    position_size = DEFAULT_POSITION_SIZE
 
     def init(self):
         close = pd.Series(self.data.Close)
@@ -29,11 +34,16 @@ class SidewaysStrategy(Strategy):
         self.rsi = self.I(lambda: _compute_rsi(close, self.rsi_period).values, name="RSI")
 
     def next(self):
-        if self.data.Close[-1] <= self.bb_lower[-1] and self.rsi[-1] < self.rsi_oversold:
+        price = self.data.Close[-1]
+        if price <= self.bb_lower[-1] and self.rsi[-1] < self.rsi_oversold:
             if not self.position.is_long:
                 self.position.close()
-                self.buy()
-        elif self.data.Close[-1] >= self.bb_upper[-1] and self.rsi[-1] > self.rsi_overbought:
+                self.buy(size=self.position_size,
+                         sl=price * (1 - self.stop_loss),
+                         tp=price * (1 + self.take_profit))
+        elif price >= self.bb_upper[-1] and self.rsi[-1] > self.rsi_overbought:
             if not self.position.is_short:
                 self.position.close()
-                self.sell()
+                self.sell(size=self.position_size,
+                          sl=price * (1 + self.stop_loss),
+                          tp=price * (1 - self.take_profit))

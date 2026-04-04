@@ -41,12 +41,13 @@ class TestDataMixin:
         )
         bot.exchange = mock_exchange
 
-        df = bot.fetch_data("BTC/USDT")
+        result = bot.fetch_data("BTC/USDT")
 
-        assert isinstance(df, pd.DataFrame)
-        assert list(df.columns) == ["Open", "High", "Low", "Close", "Volume"]
-        assert isinstance(df.index, pd.DatetimeIndex)
-        assert len(df) == len(sample_ohlcv_raw)
+        assert result is bot  # method chaining
+        assert isinstance(bot.df, pd.DataFrame)
+        assert list(bot.df.columns) == ["Open", "High", "Low", "Close", "Volume"]
+        assert isinstance(bot.df.index, pd.DatetimeIndex)
+        assert len(bot.df) == len(sample_ohlcv_raw)
 
     @patch("ccxt.binanceus")
     def test_fetch_data_stores_in_self_df(self, mock_exchange_cls, sample_ohlcv_raw):
@@ -104,11 +105,12 @@ class TestDataMixin:
         bot._save_cache("BTC/USDT", "1d")
         bot.df = None
 
-        df = bot.fetch_data("BTC/USDT", use_cache=True)
+        result = bot.fetch_data("BTC/USDT", use_cache=True)
 
         mock_exchange.fetch_ohlcv.assert_not_called()
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == len(sample_ohlcv_data)
+        assert result is bot  # method chaining
+        assert isinstance(bot.df, pd.DataFrame)
+        assert len(bot.df) == len(sample_ohlcv_data)
 
     def test_normalize_symbol_short(self):
         """Short symbol gets /USDT appended."""
@@ -145,7 +147,7 @@ class TestDataMixin:
 
         bot.fetch_data()
 
-        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None)
+        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None, limit=1000)
 
     def test_fetch_data_warns_without_symbol(self):
         """fetch_data() without symbol and no configured symbols warns."""
@@ -153,6 +155,25 @@ class TestDataMixin:
         with pytest.warns(PipelineWarning, match="No symbol provided"):
             result = bot.fetch_data()
         assert result is None
+
+    @patch("ccxt.binanceus")
+    def test_pagination_fetches_multiple_batches(self, mock_exchange_cls, sample_ohlcv_raw):
+        """Pagination loops when start date is provided and exchange returns full batches."""
+        bot = DataBot(symbols=["BTC/USDT"])
+        mock_exchange = MagicMock()
+
+        # First call returns exactly `limit` entries (triggers next page), second returns partial
+        batch1 = sample_ohlcv_raw[:200]
+        batch2 = sample_ohlcv_raw[200:250]
+        mock_exchange.fetch_ohlcv.side_effect = [batch1, batch2]
+        mock_exchange.parse8601.return_value = 1672531200000
+        bot.exchange = mock_exchange
+
+        # Use limit=200 so first batch triggers pagination
+        result = bot._fetch_with_pagination("BTC/USDT", "1d", since_ts=1672531200000, limit=200)
+
+        assert mock_exchange.fetch_ohlcv.call_count == 2
+        assert len(result) == 250
 
     @patch("ccxt.binanceus")
     def test_fetch_data_normalizes_symbol(self, mock_exchange_cls, sample_ohlcv_raw):
@@ -164,4 +185,4 @@ class TestDataMixin:
 
         bot.fetch_data("BTC")
 
-        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None)
+        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None, limit=1000)
