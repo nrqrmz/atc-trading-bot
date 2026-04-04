@@ -33,12 +33,19 @@ class RegimeMixin:
             covariance_type="full",
             n_iter=n_iter,
             random_state=42,
+            init_params="smc",
+            params="stmc",
         )
+        # Sticky transition matrix: regimes persist (~20 bars avg duration)
+        off_diag = 0.05 / (n_regimes - 1)
+        model.transmat_ = np.full((n_regimes, n_regimes), off_diag)
+        np.fill_diagonal(model.transmat_, 0.95)
         model.fit(self.features_pca)
         self.hmm_model = model
 
         hidden_states = model.predict(self.features_pca)
         self.regimes = self._map_states_to_labels(hidden_states)
+        self.regimes = self._smooth_regimes(self.regimes, min_duration=5)
         self.current_regime = self.regimes[-1]
         self.regime_metrics = self._compute_metrics(hidden_states)
 
@@ -58,6 +65,29 @@ class RegimeMixin:
                 label_map[s] = "sideways"
 
         return [label_map[s] for s in states]
+
+    @staticmethod
+    def _smooth_regimes(regimes: list[str], min_duration: int = 5) -> list[str]:
+        """Replace short regime segments (< min_duration bars) with previous regime."""
+        result = list(regimes)
+
+        segments = []
+        seg_start = 0
+        for i in range(1, len(result)):
+            if result[i] != result[seg_start]:
+                segments.append((seg_start, i, result[seg_start]))
+                seg_start = i
+        segments.append((seg_start, len(result), result[seg_start]))
+
+        for idx in range(1, len(segments)):
+            start, end, label = segments[idx]
+            if (end - start) < min_duration:
+                prev_label = segments[idx - 1][2]
+                for j in range(start, end):
+                    result[j] = prev_label
+                segments[idx] = (start, end, prev_label)
+
+        return result
 
     def _compute_metrics(self, states: np.ndarray) -> dict:
         """Compute regime classification metrics."""
@@ -123,21 +153,33 @@ class RegimeMixin:
         added_labels = set()
         start = 0
         for i in range(1, len(self.regimes)):
-            if self.regimes[i] != self.regimes[start] or i == len(self.regimes) - 1:
-                end = i if self.regimes[i] != self.regimes[start] else i + 1
+            if self.regimes[i] != self.regimes[start]:
                 regime = self.regimes[start]
                 color = regime_colors.get(regime, "#cccccc")
                 show_legend = regime not in added_labels
                 added_labels.add(regime)
                 fig.add_vrect(
                     x0=plot_df.index[start],
-                    x1=plot_df.index[min(end, len(plot_df) - 1)],
+                    x1=plot_df.index[i - 1],
                     fillcolor=color, opacity=0.2,
                     layer="below", line_width=0,
                     annotation_text=regime if show_legend else None,
                     annotation_position="top left",
                 )
                 start = i
+        # Final segment
+        regime = self.regimes[start]
+        color = regime_colors.get(regime, "#cccccc")
+        show_legend = regime not in added_labels
+        added_labels.add(regime)
+        fig.add_vrect(
+            x0=plot_df.index[start],
+            x1=plot_df.index[-1],
+            fillcolor=color, opacity=0.2,
+            layer="below", line_width=0,
+            annotation_text=regime if show_legend else None,
+            annotation_position="top left",
+        )
 
         fig.update_layout(
             title=f"Regime Detection — Current: {self.current_regime}",
