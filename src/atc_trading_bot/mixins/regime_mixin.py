@@ -43,14 +43,16 @@ class RegimeMixin:
         self.regime_metrics = self._compute_metrics(hidden_states)
 
     def _map_states_to_labels(self, states: np.ndarray) -> list[str]:
-        """Map HMM state indices to bull/bear/sideways by HMM mean on first principal component."""
-        pc1_means = self.hmm_model.means_[:, 0]
-        sorted_states = list(np.argsort(pc1_means))
+        """Map HMM state indices to bull/bear/sideways by mean return per state."""
+        close = self.df.loc[self.features_index, "Close"].values
+        returns = np.diff(close) / close[:-1]
+        returns = np.concatenate([[0.0], returns])
 
-        label_map = {
-            sorted_states[-1]: "bull",
-            sorted_states[0]: "bear",
-        }
+        state_ids = sorted(set(states))
+        mean_returns = {s: returns[states == s].mean() for s in state_ids}
+
+        sorted_states = sorted(state_ids, key=lambda s: mean_returns[s])
+        label_map = {sorted_states[-1]: "bull", sorted_states[0]: "bear"}
         for s in sorted_states:
             if s not in label_map:
                 label_map[s] = "sideways"
@@ -107,8 +109,11 @@ class RegimeMixin:
 
         regime_colors = {"bull": "#2ecc71", "bear": "#e74c3c", "sideways": "#f1c40f"}
 
+        # Use aligned data (features_index) for regime spans
+        plot_df = self.df.loc[self.features_index]
+
         fig, ax = plt.subplots(figsize=(14, 5))
-        ax.plot(self.df.index, self.df["Close"], color="black", linewidth=0.8)
+        ax.plot(plot_df.index, plot_df["Close"], color="black", linewidth=0.8)
 
         # Color background spans by regime
         start = 0
@@ -116,7 +121,7 @@ class RegimeMixin:
             if self.regimes[i] != self.regimes[start] or i == len(self.regimes) - 1:
                 end = i if self.regimes[i] != self.regimes[start] else i + 1
                 color = regime_colors.get(self.regimes[start], "#cccccc")
-                ax.axvspan(self.df.index[start], self.df.index[min(end, len(self.df) - 1)],
+                ax.axvspan(plot_df.index[start], plot_df.index[min(end, len(plot_df) - 1)],
                            alpha=0.25, color=color)
                 start = i
 
@@ -128,5 +133,5 @@ class RegimeMixin:
         legend = [Patch(facecolor=c, alpha=0.25, label=r) for r, c in regime_colors.items()]
         ax.legend(handles=legend, loc="upper left")
 
-        plt.tight_layout()
+        fig.tight_layout()
         return fig

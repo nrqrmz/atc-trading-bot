@@ -85,3 +85,36 @@ class TestFeatureMixin:
         with pytest.warns(PipelineWarning, match="compute_features"):
             result = bot.features_summary()
         assert result is None
+
+    def test_features_index_stored(self, sample_ohlcv_data):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+
+        assert bot.features_index is not None
+        # features_index should be a subset of df.index
+        assert bot.features_index.isin(sample_ohlcv_data.index).all()
+
+    def test_features_index_shorter_than_df(self, sample_ohlcv_data):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+
+        # NaN rows from indicator warmup should be dropped
+        assert len(bot.features_index) <= len(sample_ohlcv_data)
+        assert len(bot.features_index) == len(bot.features_pca)
+
+    def test_excludes_problematic_features(self, sample_ohlcv_data):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+
+        excluded = {"volatility_bbhi", "volatility_bbli", "volume_adi", "volume_obv"}
+        remaining_cols = set(bot.features.columns)
+        assert remaining_cols.isdisjoint(excluded)
+
+    def test_no_highly_correlated_features(self, sample_ohlcv_data):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+
+        corr = bot.features.corr().abs()
+        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        max_corr = upper.max().max()
+        assert max_corr <= 0.95

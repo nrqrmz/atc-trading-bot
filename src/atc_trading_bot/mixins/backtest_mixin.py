@@ -131,17 +131,36 @@ class BacktestMixin:
     def _fit_and_select_strategy(self, train_df: pd.DataFrame, n_components: int,
                                  n_regimes: int, test_df: pd.DataFrame) -> type[Strategy]:
         """Fit PCA + HMM on training data and select strategy for test data's regime."""
+        from atc_trading_bot.mixins.feature_mixin import _EXCLUDE_COLS, _CORRELATION_THRESHOLD
+
         # Compute features on training data
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
             df_ta = ta_lib.add_all_ta_features(
                 train_df.copy(), open="Open", high="High", low="Low",
-                close="Close", volume="Volume", fillna=True,
+                close="Close", volume="Volume", fillna=False,
             )
-        feature_cols = [c for c in df_ta.columns if c not in ["Open", "High", "Low", "Close", "Volume"]]
-        train_features = df_ta[feature_cols]
+        feature_cols = [c for c in df_ta.columns if c not in _EXCLUDE_COLS]
+        train_features = df_ta[feature_cols].copy()
+
+        # Clean: forward fill, replace inf, drop NaN
+        train_features.ffill(inplace=True)
+        train_features.replace([np.inf, -np.inf], np.nan, inplace=True)
+        thresh = int(len(train_features) * 0.5)
+        train_features.dropna(axis=1, thresh=thresh, inplace=True)
+        train_features.dropna(inplace=True)
+
+        valid_index = train_features.index
+
+        # Remove constant and highly correlated features
         non_const = train_features.columns[train_features.std() > 0]
         train_features = train_features[non_const]
+
+        corr = train_features.corr().abs()
+        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        corr_drop = [col for col in upper.columns if any(upper[col] > _CORRELATION_THRESHOLD)]
+        train_features = train_features.drop(columns=corr_drop)
+        kept_cols = train_features.columns
 
         scaler = StandardScaler()
         scaled = scaler.fit_transform(train_features)
@@ -160,9 +179,13 @@ class BacktestMixin:
             warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
             df_ta_test = ta_lib.add_all_ta_features(
                 test_df.copy(), open="Open", high="High", low="Low",
-                close="Close", volume="Volume", fillna=True,
+                close="Close", volume="Volume", fillna=False,
             )
-        test_features = df_ta_test[non_const]
+        test_features = df_ta_test[kept_cols].copy()
+        test_features.ffill(inplace=True)
+        test_features.replace([np.inf, -np.inf], np.nan, inplace=True)
+        test_features.dropna(inplace=True)
+
         test_scaled = scaler.transform(test_features)
         test_pca = pca.transform(test_scaled)
 
@@ -170,8 +193,8 @@ class BacktestMixin:
         test_states = hmm.predict(test_pca)
         last_state = test_states[-1]
 
-        # Map states to labels using training data returns
-        close = train_df["Close"].values
+        # Map states to labels using aligned training data returns
+        close = train_df.loc[valid_index, "Close"].values
         returns = np.diff(close) / close[:-1]
         returns = np.concatenate([[0.0], returns])
         train_states = hmm.predict(pca_features)

@@ -12,6 +12,7 @@ class RegimeBot(RegimeMixin):
     def __init__(self, **kwargs):
         self.df = kwargs.pop("df", None)
         self.features_pca = kwargs.pop("features_pca", None)
+        self.features_index = kwargs.pop("features_index", None)
         super().__init__(**kwargs)
 
 
@@ -45,7 +46,7 @@ def _make_synthetic_features_and_df(n=200):
 class TestRegimeMixin:
     def test_detect_regime_produces_three_states(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime(n_regimes=3)
 
         assert bot.regimes is not None
@@ -54,30 +55,29 @@ class TestRegimeMixin:
 
     def test_regime_labels_are_mapped(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime(n_regimes=3)
 
-        # Regimes should be mapped to string labels
         valid_labels = {"bull", "bear", "sideways"}
         assert set(bot.regimes).issubset(valid_labels)
 
     def test_regime_length_matches_data(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
 
         assert len(bot.regimes) == len(features_pca)
 
     def test_hmm_model_stored(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
 
         assert bot.hmm_model is not None
 
     def test_regime_metrics_computed(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
 
         assert bot.regime_metrics is not None
@@ -93,7 +93,7 @@ class TestRegimeMixin:
 
     def test_current_regime_is_last(self):
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
 
         assert bot.current_regime == bot.regimes[-1]
@@ -104,7 +104,7 @@ class TestRegimeMixin:
         from matplotlib.figure import Figure
 
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
         fig = bot.plot_regimes()
 
@@ -116,50 +116,53 @@ class TestRegimeMixin:
             result = bot.plot_regimes()
         assert result is None
 
-    def test_plot_regimes_does_not_call_plt_show(self):
+    def test_plot_regimes_does_not_call_plt_show_or_tight_layout(self):
         import matplotlib
         matplotlib.use("Agg")
         from unittest.mock import patch
 
         features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime()
 
-        with patch("matplotlib.pyplot.show") as mock_show:
+        with patch("matplotlib.pyplot.show") as mock_show, \
+             patch("matplotlib.pyplot.tight_layout") as mock_tight:
             bot.plot_regimes()
             mock_show.assert_not_called()
-
-    def test_map_states_labels_follow_pc1_means(self):
-        """Labeling should follow HMM PC1 means: highest=bull, lowest=bear."""
-        features_pca, df = _make_synthetic_features_and_df()
-        bot = RegimeBot(df=df, features_pca=features_pca)
-        bot.detect_regime(n_regimes=3)
-
-        # Verify the label mapping follows PC1 means ordering
-        pc1_means = bot.hmm_model.means_[:, 0]
-        sorted_states = list(np.argsort(pc1_means))
-
-        # Reconstruct expected mapping from the model's own means
-        expected_map = {sorted_states[-1]: "bull", sorted_states[0]: "bear"}
-        for s in sorted_states:
-            if s not in expected_map:
-                expected_map[s] = "sideways"
-
-        states = bot.hmm_model.predict(features_pca)
-        expected_labels = [expected_map[s] for s in states]
-        assert bot.regimes == expected_labels
+            mock_tight.assert_not_called()
 
     def test_regime_labels_correct_for_clear_regimes(self):
         """With well-separated clusters, bull/bear labels should match the data structure."""
         features_pca, df = _make_synthetic_features_and_df(n=300)
-        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
         bot.detect_regime(n_regimes=3)
 
-        # The bull cluster (first third) has PC1 center at +2
-        # The bear cluster (second third) has PC1 center at -2
-        # Majority of first third should be "bull"
+        # The bull cluster (first third) has rising prices
+        # The bear cluster (second third) has falling prices
         n_third = 100
         bull_section = bot.regimes[:n_third]
         bear_section = bot.regimes[n_third:2 * n_third]
         assert bull_section.count("bull") > n_third * 0.4
         assert bear_section.count("bear") > n_third * 0.4
+
+    def test_regime_mapping_uses_aligned_returns(self):
+        """Regime mapping should use features_index-aligned Close prices."""
+        np.random.seed(42)
+        n_full = 250
+        n_valid = 200  # Simulate NaN dropout from indicator warmup
+        dates = pd.date_range("2023-01-01", periods=n_full, freq="1D")
+
+        # Full df with all rows
+        close = 30000 + np.cumsum(np.random.randn(n_full) * 200)
+        df = pd.DataFrame({"Close": close}, index=dates)
+
+        # features_pca only covers the last n_valid rows (after NaN drop)
+        valid_index = dates[n_full - n_valid:]
+        features_pca = np.random.randn(n_valid, 5)
+
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=valid_index)
+        bot.detect_regime(n_regimes=3)
+
+        # Should not crash and should have correct length
+        assert len(bot.regimes) == n_valid
+        assert set(bot.regimes).issubset({"bull", "bear", "sideways"})

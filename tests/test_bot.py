@@ -45,7 +45,7 @@ class TestBotIntegration:
         # Step 2: Regime detection
         bot.detect_regime(n_regimes=3)
         assert bot.current_regime in ("bull", "bear", "sideways")
-        assert len(bot.regimes) == len(bot.df)
+        assert len(bot.regimes) == len(bot.features_pca)
 
         # Step 3: Strategy selection
         strategy = bot.select_strategy()
