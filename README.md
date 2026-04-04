@@ -48,8 +48,8 @@ from atc_trading_bot import Bot
 # Initialize the bot (defaults: exchange=binanceus, timeframe=1d)
 bot = Bot(symbols=["BTC", "ETH", "SOL"])
 
-# Run the full pipeline for a symbol
-signals = bot.run_pipeline("BTC")
+# Run the full pipeline (defaults to BTC)
+signals = bot.run_pipeline()
 print(signals)
 # {'regime': 'bull', 'strategy': 'BullStrategy', 'signal': 'buy'}
 ```
@@ -178,7 +178,7 @@ bot.fetch_data("BTC", use_cache=True)
 | `backtest(strategy, cash, commission)` | Run backtest |
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct)` | CPCV validation |
 | `generate_signals()` | Generate buy/sell/hold signals |
-| `run_pipeline(symbol)` | Execute full pipeline end-to-end |
+| `run_pipeline(symbol="BTC")` | Execute full pipeline end-to-end |
 
 ## Running Tests
 
