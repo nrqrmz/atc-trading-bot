@@ -62,7 +62,8 @@ class TestFeatureMixin:
         assert bot.scaler is not None
         assert bot.pca is not None
 
-    def test_raises_without_data(self):
+    def test_warns_without_data(self):
         bot = FeatureBot()
-        with pytest.raises(ValueError, match="fetch data"):
-            bot.compute_features()
+        with pytest.warns(UserWarning, match="fetch_data"):
+            result = bot.compute_features()
+        assert result is None

@@ -63,17 +63,20 @@ class TestSignalMixin:
 
         assert bot.signals is not None
 
-    def test_raises_without_data(self):
+    def test_warns_without_data(self):
         bot = SignalBot(current_regime="bull", active_strategy=BullStrategy)
-        with pytest.raises(ValueError, match="data"):
-            bot.generate_signals()
+        with pytest.warns(UserWarning, match="fetch_data"):
+            result = bot.generate_signals()
+        assert result is None
 
-    def test_raises_without_regime(self, trending_data):
+    def test_warns_without_regime(self, trending_data):
         bot = SignalBot(df=trending_data, active_strategy=BullStrategy)
-        with pytest.raises(ValueError, match="regime"):
-            bot.generate_signals()
+        with pytest.warns(UserWarning, match="detect_regime"):
+            result = bot.generate_signals()
+        assert result is None
 
-    def test_raises_without_strategy(self, trending_data):
+    def test_warns_without_strategy(self, trending_data):
         bot = SignalBot(df=trending_data, current_regime="bull")
-        with pytest.raises(ValueError, match="strategy"):
-            bot.generate_signals()
+        with pytest.warns(UserWarning, match="select_strategy"):
+            result = bot.generate_signals()
+        assert result is None

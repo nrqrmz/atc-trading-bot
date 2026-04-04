@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from backtesting.lib import FractionalBacktest as Backtest
@@ -21,11 +23,14 @@ class SignalMixin:
         - confidence: regime consensus across symbols (if multiple)
         """
         if self.df is None:
-            raise ValueError("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.")
+            return
         if self.current_regime is None:
-            raise ValueError("No regime detected. Call detect_regime first.")
+            warnings.warn("No regime detected. Call detect_regime first.")
+            return
         if self.active_strategy is None:
-            raise ValueError("No strategy selected. Call select_strategy first.")
+            warnings.warn("No strategy selected. Call select_strategy first.")
+            return
 
         signal = self._determine_signal()
 

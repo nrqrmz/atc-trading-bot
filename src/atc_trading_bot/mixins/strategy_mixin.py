@@ -1,3 +1,5 @@
+import warnings
+
 from backtesting import Strategy
 
 from atc_trading_bot.strategies.bear_strategy import BearStrategy
@@ -21,7 +23,8 @@ class StrategyMixin:
     def select_strategy(self) -> type[Strategy]:
         """Select the appropriate strategy based on the current regime."""
         if self.current_regime is None:
-            raise ValueError("No regime detected. Call detect_regime first.")
+            warnings.warn("No regime detected. Call detect_regime first.")
+            return
 
         self.active_strategy = self.REGIME_STRATEGY_MAP[self.current_regime]
         return self.active_strategy

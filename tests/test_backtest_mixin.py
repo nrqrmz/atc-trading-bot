@@ -67,16 +67,18 @@ class TestBacktestMixin:
 
         assert bot.results is not None
 
-    def test_backtest_raises_without_data(self):
+    def test_backtest_warns_without_data(self):
         bot = BacktestBot(current_regime="bull")
         bot.select_strategy()
-        with pytest.raises(ValueError, match="data"):
-            bot.backtest()
+        with pytest.warns(UserWarning, match="fetch_data"):
+            result = bot.backtest()
+        assert result is None
 
-    def test_backtest_raises_without_strategy(self, long_ohlcv_data):
+    def test_backtest_warns_without_strategy(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data)
-        with pytest.raises(ValueError, match="strategy"):
-            bot.backtest()
+        with pytest.warns(UserWarning, match="select_strategy"):
+            result = bot.backtest()
+        assert result is None
 
     def test_max_drawdown_is_negative_or_zero(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")

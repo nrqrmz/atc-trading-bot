@@ -84,10 +84,11 @@ class TestRegimeMixin:
         assert "bic" in bot.regime_metrics
         assert "avg_duration" in bot.regime_metrics
 
-    def test_raises_without_features(self):
+    def test_warns_without_features(self):
         bot = RegimeBot(df=pd.DataFrame({"Close": [1, 2, 3]}))
-        with pytest.raises(ValueError, match="features"):
-            bot.detect_regime()
+        with pytest.warns(UserWarning, match="compute_features"):
+            result = bot.detect_regime()
+        assert result is None
 
     def test_current_regime_is_last(self):
         features_pca, df = _make_synthetic_features_and_df()

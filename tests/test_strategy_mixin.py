@@ -36,10 +36,11 @@ class TestStrategyMixin:
         bot.select_strategy()
         assert bot.active_strategy is BullStrategy
 
-    def test_raises_without_regime(self):
+    def test_warns_without_regime(self):
         bot = StrategyBot()
-        with pytest.raises(ValueError, match="regime"):
-            bot.select_strategy()
+        with pytest.warns(UserWarning, match="detect_regime"):
+            result = bot.select_strategy()
+        assert result is None
 
     def test_get_strategy_for_regime(self):
         bot = StrategyBot()

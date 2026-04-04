@@ -21,7 +21,8 @@ class FeatureMixin:
     def compute_features(self, n_components: int = 10) -> None:
         """Compute TA features, standardize, and apply PCA."""
         if self.df is None:
-            raise ValueError("No data available. Call fetch data first.")
+            warnings.warn("No data available. Call fetch_data first.")
+            return
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning, module="ta")

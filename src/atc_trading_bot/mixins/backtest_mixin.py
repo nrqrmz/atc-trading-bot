@@ -23,11 +23,13 @@ class BacktestMixin:
                  cash: float = 100_000, commission: float = 0.001) -> dict:
         """Run a backtest with the given or active strategy."""
         if self.df is None:
-            raise ValueError("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.")
+            return
 
         strat = strategy or self.active_strategy
         if strat is None:
-            raise ValueError("No strategy selected. Call select_strategy first.")
+            warnings.warn("No strategy selected. Call select_strategy first.")
+            return
 
         bt = Backtest(self.df, strat, cash=cash, commission=commission, finalize_trades=True)
         stats = bt.run()
@@ -46,7 +48,8 @@ class BacktestMixin:
         Embargo adds an additional gap after each test set.
         """
         if self.df is None:
-            raise ValueError("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.")
+            return
 
         n = len(self.df)
         group_size = n // n_splits
