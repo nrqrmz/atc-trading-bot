@@ -43,20 +43,10 @@ class RegimeMixin:
         self.regime_metrics = self._compute_metrics(hidden_states)
 
     def _map_states_to_labels(self, states: np.ndarray) -> list[str]:
-        """Map HMM state indices to bull/bear/sideways by mean return per state."""
-        close = self.df["Close"].values
-        returns = np.diff(close) / close[:-1]
-        # Pad returns to match states length
-        returns = np.concatenate([[0.0], returns])
+        """Map HMM state indices to bull/bear/sideways by HMM mean on first principal component."""
+        pc1_means = self.hmm_model.means_[:, 0]
+        sorted_states = list(np.argsort(pc1_means))
 
-        state_ids = sorted(set(states))
-        mean_returns = {}
-        for s in state_ids:
-            mask = states == s
-            mean_returns[s] = returns[mask].mean()
-
-        # Sort states by mean return: highest = bull, lowest = bear, middle = sideways
-        sorted_states = sorted(state_ids, key=lambda s: mean_returns[s])
         label_map = {
             sorted_states[-1]: "bull",
             sorted_states[0]: "bear",
@@ -139,5 +129,4 @@ class RegimeMixin:
         ax.legend(handles=legend, loc="upper left")
 
         plt.tight_layout()
-        plt.show()
         return fig

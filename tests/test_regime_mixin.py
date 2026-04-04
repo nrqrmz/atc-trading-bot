@@ -115,3 +115,51 @@ class TestRegimeMixin:
         with pytest.warns(PipelineWarning, match="detect_regime"):
             result = bot.plot_regimes()
         assert result is None
+
+    def test_plot_regimes_does_not_call_plt_show(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        from unittest.mock import patch
+
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot.detect_regime()
+
+        with patch("matplotlib.pyplot.show") as mock_show:
+            bot.plot_regimes()
+            mock_show.assert_not_called()
+
+    def test_map_states_labels_follow_pc1_means(self):
+        """Labeling should follow HMM PC1 means: highest=bull, lowest=bear."""
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot.detect_regime(n_regimes=3)
+
+        # Verify the label mapping follows PC1 means ordering
+        pc1_means = bot.hmm_model.means_[:, 0]
+        sorted_states = list(np.argsort(pc1_means))
+
+        # Reconstruct expected mapping from the model's own means
+        expected_map = {sorted_states[-1]: "bull", sorted_states[0]: "bear"}
+        for s in sorted_states:
+            if s not in expected_map:
+                expected_map[s] = "sideways"
+
+        states = bot.hmm_model.predict(features_pca)
+        expected_labels = [expected_map[s] for s in states]
+        assert bot.regimes == expected_labels
+
+    def test_regime_labels_correct_for_clear_regimes(self):
+        """With well-separated clusters, bull/bear labels should match the data structure."""
+        features_pca, df = _make_synthetic_features_and_df(n=300)
+        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot.detect_regime(n_regimes=3)
+
+        # The bull cluster (first third) has PC1 center at +2
+        # The bear cluster (second third) has PC1 center at -2
+        # Majority of first third should be "bull"
+        n_third = 100
+        bull_section = bot.regimes[:n_third]
+        bear_section = bot.regimes[n_third:2 * n_third]
+        assert bull_section.count("bull") > n_third * 0.4
+        assert bear_section.count("bear") > n_third * 0.4
