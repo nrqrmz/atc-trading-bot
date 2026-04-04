@@ -10,6 +10,14 @@ class Bot(SignalMixin, BacktestMixin, StrategyMixin, RegimeMixin, FeatureMixin, 
     """Trading bot composing all mixins.
 
     Pipeline: fetch_data → compute_features → detect_regime → select_strategy → backtest → generate_signals
+
+    Args:
+        exchange_id: CCXT exchange identifier. Default: "binanceus".
+        symbols: List of symbols to trade, e.g. ["BTC", "ETH"]. Case insensitive.
+        timeframe: Candlestick timeframe. Default: "1d".
+        api_key: Exchange API key. Default: "" (public endpoints only).
+        secret: Exchange API secret. Default: "".
+        data_dir: Directory for CSV cache. Default: "data/" relative to project root.
     """
 
     def run_pipeline(self, symbol: str = "BTC", n_components: int = 10,
