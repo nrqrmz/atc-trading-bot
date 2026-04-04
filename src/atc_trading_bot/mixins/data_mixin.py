@@ -8,12 +8,12 @@ import pandas as pd
 class DataMixin:
     """Mixin for fetching and caching OHLCV data via CCXT."""
 
-    def __init__(self, exchange_id: str = "binance", symbols: list[str] | None = None,
+    def __init__(self, exchange_id: str = "binanceus", symbols: list[str] | None = None,
                  timeframe: str = "1d", api_key: str = "", secret: str = "",
                  data_dir: str | None = None, **kwargs):
         super().__init__(**kwargs)
         self.exchange_id = exchange_id
-        self.symbols = symbols or []
+        self.symbols = [self._normalize_symbol(s) for s in (symbols or [])]
         self.timeframe = timeframe
         self.df: pd.DataFrame | None = None
 
@@ -30,9 +30,16 @@ class DataMixin:
         else:
             self.data_dir = data_dir
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Convert short symbol like 'BTC' to CCXT format 'BTC/USDT'."""
+        if "/" in symbol:
+            return symbol
+        return f"{symbol}/USDT"
+
     def fetch_data(self, symbol: str, timeframe: str | None = None,
                    since: str | None = None, use_cache: bool = False) -> pd.DataFrame:
         """Fetch OHLCV data for a symbol. Uses cache if available and requested."""
+        symbol = self._normalize_symbol(symbol)
         tf = timeframe or self.timeframe
 
         if use_cache:

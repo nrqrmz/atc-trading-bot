@@ -9,12 +9,12 @@ from atc_trading_bot.bot import Bot
 @pytest.fixture
 def bot_with_data(sample_ohlcv_data):
     """Create a Bot with mocked exchange and pre-loaded data."""
-    with patch("ccxt.binance") as mock_cls:
+    with patch("ccxt.binanceus") as mock_cls:
         mock_exchange = MagicMock()
         mock_cls.return_value = mock_exchange
 
         bot = Bot(
-            exchange_id="binance",
+            exchange_id="binanceus",
             symbols=["BTC/USDT"],
             timeframe="1d",
         )
@@ -25,13 +25,13 @@ def bot_with_data(sample_ohlcv_data):
 
 class TestBotIntegration:
     def test_bot_instantiation(self):
-        with patch("ccxt.binance"):
+        with patch("ccxt.binanceus"):
             bot = Bot(
-                exchange_id="binance",
+                exchange_id="binanceus",
                 symbols=["BTC/USDT", "ETH/USDT", "SOL/USDT"],
                 timeframe="1d",
             )
-            assert bot.exchange_id == "binance"
+            assert bot.exchange_id == "binanceus"
             assert len(bot.symbols) == 3
 
     def test_full_pipeline_with_mocked_data(self, bot_with_data):
@@ -62,13 +62,13 @@ class TestBotIntegration:
         assert signals["regime"] == bot.current_regime
 
     def test_run_pipeline(self, sample_ohlcv_raw):
-        with patch("ccxt.binance") as mock_cls:
+        with patch("ccxt.binanceus") as mock_cls:
             mock_exchange = MagicMock()
             mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
             mock_cls.return_value = mock_exchange
 
             bot = Bot(
-                exchange_id="binance",
+                exchange_id="binanceus",
                 symbols=["BTC/USDT"],
                 timeframe="1d",
             )
@@ -82,13 +82,13 @@ class TestBotIntegration:
 
     def test_pipeline_per_symbol(self, sample_ohlcv_raw):
         """Test running pipeline independently for each symbol."""
-        with patch("ccxt.binance") as mock_cls:
+        with patch("ccxt.binanceus") as mock_cls:
             mock_exchange = MagicMock()
             mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
             mock_cls.return_value = mock_exchange
 
             bot = Bot(
-                exchange_id="binance",
+                exchange_id="binanceus",
                 symbols=["BTC/USDT", "ETH/USDT"],
                 timeframe="1d",
             )

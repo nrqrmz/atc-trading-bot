@@ -45,15 +45,11 @@ fetch_data → compute_features → detect_regime → select_strategy → backte
 ```python
 from atc_trading_bot import Bot
 
-# Initialize the bot
-bot = Bot(
-    exchange_id="binance",
-    symbols=["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    timeframe="1d",
-)
+# Initialize the bot (defaults: exchange=binanceus, timeframe=1d)
+bot = Bot(symbols=["BTC", "ETH", "SOL"])
 
 # Run the full pipeline for a symbol
-signals = bot.run_pipeline("BTC/USDT")
+signals = bot.run_pipeline("BTC")
 print(signals)
 # {'regime': 'bull', 'strategy': 'BullStrategy', 'signal': 'buy'}
 ```
@@ -65,14 +61,13 @@ For more control over each step of the pipeline:
 ```python
 from atc_trading_bot import Bot
 
-bot = Bot(
-    exchange_id="binance",
-    symbols=["BTC/USDT"],
-    timeframe="1d",
-)
+bot = Bot(symbols=["BTC"])
 
 # 1. Fetch OHLCV data
-bot.fetch_data("BTC/USDT")
+bot.fetch_data("BTC")
+
+# Access the raw DataFrame at any time
+print(bot.df)
 
 # 2. Compute technical indicators + PCA
 bot.compute_features(n_components=10)
@@ -121,11 +116,7 @@ for fold in cv_results:
 Run the pipeline independently for each asset:
 
 ```python
-bot = Bot(
-    exchange_id="binance",
-    symbols=["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    timeframe="1d",
-)
+bot = Bot(symbols=["BTC", "ETH", "SOL"])
 
 for symbol in bot.symbols:
     signals = bot.run_pipeline(symbol)
@@ -138,10 +129,10 @@ OHLCV data is cached locally as CSV to avoid repeated API calls:
 
 ```python
 # First call fetches from exchange and caches
-bot.fetch_data("BTC/USDT")
+bot.fetch_data("BTC")
 
 # Subsequent calls can use cache
-bot.fetch_data("BTC/USDT", use_cache=True)
+bot.fetch_data("BTC", use_cache=True)
 ```
 
 ## Available Metrics
@@ -164,11 +155,17 @@ bot.fetch_data("BTC/USDT", use_cache=True)
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `exchange_id` | `str` | `"binance"` | CCXT exchange identifier |
-| `symbols` | `list[str]` | `[]` | Trading pairs (e.g. `["BTC/USDT"]`) |
+| `exchange_id` | `str` | `"binanceus"` | CCXT exchange identifier |
+| `symbols` | `list[str]` | `[]` | Trading pairs — short (`"BTC"`) or full (`"BTC/USDT"`) |
 | `timeframe` | `str` | `"1d"` | Candle timeframe |
 | `api_key` | `str` | `""` | Exchange API key |
 | `secret` | `str` | `""` | Exchange API secret |
+
+### Attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `df` | `DataFrame \| None` | OHLCV DataFrame after calling `fetch_data()` |
 
 ### Methods
 

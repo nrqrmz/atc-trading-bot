@@ -16,25 +16,25 @@ class DataBot(DataMixin):
 class TestDataMixin:
     def setup_method(self):
         self.bot = DataBot(
-            exchange_id="binance",
+            exchange_id="binanceus",
             symbols=["BTC/USDT"],
             timeframe="1d",
         )
 
     def test_init_sets_attributes(self):
-        assert self.bot.exchange_id == "binance"
+        assert self.bot.exchange_id == "binanceus"
         assert self.bot.symbols == ["BTC/USDT"]
         assert self.bot.timeframe == "1d"
         assert self.bot.exchange is not None
 
-    @patch("ccxt.binance")
+    @patch("ccxt.binanceus")
     def test_fetch_data_returns_dataframe(self, mock_exchange_cls, sample_ohlcv_raw):
         mock_exchange = MagicMock()
         mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
         mock_exchange_cls.return_value = mock_exchange
 
         bot = DataBot(
-            exchange_id="binance",
+            exchange_id="binanceus",
             symbols=["BTC/USDT"],
             timeframe="1d",
         )
@@ -47,14 +47,14 @@ class TestDataMixin:
         assert isinstance(df.index, pd.DatetimeIndex)
         assert len(df) == len(sample_ohlcv_raw)
 
-    @patch("ccxt.binance")
+    @patch("ccxt.binanceus")
     def test_fetch_data_stores_in_self_df(self, mock_exchange_cls, sample_ohlcv_raw):
         mock_exchange = MagicMock()
         mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
         mock_exchange_cls.return_value = mock_exchange
 
         bot = DataBot(
-            exchange_id="binance",
+            exchange_id="binanceus",
             symbols=["BTC/USDT"],
             timeframe="1d",
         )
@@ -85,13 +85,13 @@ class TestDataMixin:
         result = self.bot._load_cache("NONEXISTENT/PAIR", "1d")
         assert result is None
 
-    @patch("ccxt.binance")
+    @patch("ccxt.binanceus")
     def test_fetch_data_uses_cache(self, mock_exchange_cls, sample_ohlcv_data, tmp_path):
         mock_exchange = MagicMock()
         mock_exchange_cls.return_value = mock_exchange
 
         bot = DataBot(
-            exchange_id="binance",
+            exchange_id="binanceus",
             symbols=["BTC/USDT"],
             timeframe="1d",
         )
@@ -108,3 +108,30 @@ class TestDataMixin:
         mock_exchange.fetch_ohlcv.assert_not_called()
         assert isinstance(df, pd.DataFrame)
         assert len(df) == len(sample_ohlcv_data)
+
+    def test_normalize_symbol_short(self):
+        """Short symbol gets /USDT appended."""
+        bot = DataBot(symbols=["BTC", "ETH"])
+        assert bot.symbols == ["BTC/USDT", "ETH/USDT"]
+
+    def test_normalize_symbol_already_full(self):
+        """Full CCXT symbol is left unchanged."""
+        bot = DataBot(symbols=["BTC/USDT", "ETH/USDT"])
+        assert bot.symbols == ["BTC/USDT", "ETH/USDT"]
+
+    def test_normalize_symbol_mixed(self):
+        """Mix of short and full symbols."""
+        bot = DataBot(symbols=["BTC", "ETH/USDT", "SOL"])
+        assert bot.symbols == ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+    @patch("ccxt.binanceus")
+    def test_fetch_data_normalizes_symbol(self, mock_exchange_cls, sample_ohlcv_raw):
+        """fetch_data accepts short symbols."""
+        bot = DataBot(symbols=["BTC"])
+        mock_exchange = MagicMock()
+        mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
+        bot.exchange = mock_exchange
+
+        bot.fetch_data("BTC")
+
+        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None)
