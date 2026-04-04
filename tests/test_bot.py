@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch
@@ -53,8 +52,9 @@ class TestBotIntegration:
 
         # Step 4: Backtest
         results = bot.backtest()
-        assert "sharpe_ratio" in results
-        assert "max_drawdown" in results
+        assert isinstance(results, pd.DataFrame)
+        assert "sharpe_ratio" in results["metric"].values
+        assert "max_drawdown" in results["metric"].values
 
         # Step 5: Signals
         signals = bot.generate_signals()
@@ -110,9 +110,12 @@ class TestBotIntegration:
         bot.select_strategy()
         results = bot.backtest()
 
-        assert -1 <= results["max_drawdown"] <= 0
-        assert 0 <= results["win_rate"] <= 1
-        assert results["num_trades"] >= 0
+        def _get(name):
+            return results.loc[results["metric"] == name, "value"].iloc[0]
+
+        assert -1 <= _get("max_drawdown") <= 0
+        assert 0 <= _get("win_rate") <= 1
+        assert _get("num_trades") >= 0
 
     def test_cpcv_integration(self, bot_with_data):
         bot = bot_with_data

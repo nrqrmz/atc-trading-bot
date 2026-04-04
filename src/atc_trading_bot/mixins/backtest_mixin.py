@@ -7,9 +7,22 @@ import pandas as pd
 from backtesting import Strategy
 from backtesting.lib import FractionalBacktest as Backtest
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from hmmlearn.hmm import GaussianHMM
 import ta as ta_lib
+
+_METRIC_DESCRIPTIONS = {
+    "sharpe_ratio": "Risk-adjusted return (annualized)",
+    "sortino_ratio": "Downside risk-adjusted return",
+    "max_drawdown": "Worst peak-to-trough decline",
+    "calmar_ratio": "Annual return / Max drawdown",
+    "win_rate": "Percentage of winning trades",
+    "profit_factor": "Gross profit / Gross loss",
+    "total_return": "Total strategy return",
+    "buy_and_hold_return": "Buy & hold benchmark return",
+    "num_trades": "Number of trades executed",
+}
 
 
 class BacktestMixin:
@@ -17,34 +30,63 @@ class BacktestMixin:
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.results: dict | None = None
+        self.results: pd.DataFrame | None = None
         self.cv_results: list[dict] | None = None
 
     def backtest(self, strategy: type[Strategy] | None = None,
-                 cash: float = 100_000, commission: float = 0.001) -> dict:
-        """Run a backtest with the given or active strategy.
+                 cash: float = 100_000, commission: float = 0.001,
+                 test_ratio: float = 0.3, n_components: int | None = None,
+                 n_regimes: int | None = None) -> pd.DataFrame:
+        """Run an out-of-sample backtest with train/test split.
+
+        Splits data into train/test using test_ratio. When no explicit strategy
+        is given, refits the full pipeline (features + PCA + HMM) on training
+        data only to avoid look-ahead bias.
 
         Args:
-            strategy: Strategy class to backtest. Defaults to self.active_strategy.
+            strategy: Strategy class to backtest. If None, refits pipeline on
+                training data and selects strategy for the test period.
             cash: Starting capital. Default: 100,000.
             commission: Trading commission as a fraction. Default: 0.001 (0.1%).
+            test_ratio: Fraction of data to use as test set. Default: 0.3.
+            n_components: PCA components for refit. Defaults to fitted value.
+            n_regimes: HMM regimes for refit. Defaults to fitted value.
 
         Returns:
-            Dict with performance metrics (Sharpe, Sortino, Max Drawdown, etc.),
-            or None if prerequisites are missing.
+            DataFrame with columns (metric, value, description) including
+            backtest date range, or None if prerequisites are missing.
         """
         if self.df is None:
             warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return
 
-        strat = strategy or self.active_strategy
-        if strat is None:
+        if strategy is None and self.active_strategy is None:
             warnings.warn("No strategy selected. Call select_strategy first.", PipelineWarning)
             return
 
-        bt = Backtest(self.df, strat, cash=cash, commission=commission, finalize_trades=True)
+        if n_components is None:
+            n_components = getattr(self.pca, "n_components_", 10) if hasattr(self, "pca") and self.pca is not None else 10
+        if n_regimes is None:
+            n_regimes = getattr(self.hmm_model, "n_components", 3) if hasattr(self, "hmm_model") and self.hmm_model is not None else 3
+
+        train_df, test_df = train_test_split(self.df, test_size=test_ratio, shuffle=False)
+
+        if strategy is not None:
+            strat = strategy
+        else:
+            strat = self._fit_and_select_strategy(
+                train_df, n_components=n_components, n_regimes=n_regimes,
+                test_df=test_df,
+            )
+
+        bt = Backtest(test_df, strat, cash=cash, commission=commission, finalize_trades=True)
         stats = bt.run()
-        self.results = self._extract_metrics(stats)
+        metrics_dict = self._extract_metrics(stats, test_df=test_df)
+        self.results = self._metrics_to_dataframe(
+            metrics_dict,
+            start_date=test_df.index[0],
+            end_date=test_df.index[-1],
+        )
         return self.results
 
     def cross_validate_cpcv(self, n_splits: int = 5, purge_gap: int = 5,
@@ -120,7 +162,7 @@ class BacktestMixin:
             try:
                 bt = Backtest(test_df, strategy, cash=cash, commission=commission, finalize_trades=True)
                 stats = bt.run()
-                metrics = self._extract_metrics(stats)
+                metrics = self._extract_metrics(stats, test_df=test_df)
                 metrics["fold"] = test_idx
                 self.cv_results.append(metrics)
             except Exception:
@@ -210,7 +252,7 @@ class BacktestMixin:
         regime = label_map.get(last_state, "sideways")
         return self.get_strategy_for_regime(regime)
 
-    def _extract_metrics(self, stats) -> dict:
+    def _extract_metrics(self, stats, test_df: pd.DataFrame | None = None) -> dict:
         """Extract key performance metrics from backtesting stats."""
         equity = stats._equity_curve["Equity"]
         peak = equity.cummax()
@@ -218,7 +260,8 @@ class BacktestMixin:
         max_dd = drawdown.min()
 
         total_return = float(stats["Return [%]"]) / 100
-        duration_days = (self.df.index[-1] - self.df.index[0]).days if self.df is not None else 365
+        df_for_duration = test_df if test_df is not None else self.df
+        duration_days = (df_for_duration.index[-1] - df_for_duration.index[0]).days if df_for_duration is not None else 365
         years = max(duration_days / 365.25, 1 / 365.25)
         annual_return = (1 + total_return) ** (1 / years) - 1
 
@@ -233,3 +276,18 @@ class BacktestMixin:
             "buy_and_hold_return": float(stats["Buy & Hold Return [%]"]) / 100,
             "num_trades": int(stats["# Trades"]),
         }
+
+    @staticmethod
+    def _metrics_to_dataframe(metrics: dict, start_date, end_date) -> pd.DataFrame:
+        """Convert metrics dict to a DataFrame with metric, value, description."""
+        rows = [
+            {"metric": "backtest_start", "value": str(start_date.date()), "description": "Start of backtest period"},
+            {"metric": "backtest_end", "value": str(end_date.date()), "description": "End of backtest period"},
+        ]
+        for key, value in metrics.items():
+            rows.append({
+                "metric": key,
+                "value": value,
+                "description": _METRIC_DESCRIPTIONS.get(key, ""),
+            })
+        return pd.DataFrame(rows)

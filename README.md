@@ -87,11 +87,15 @@ bot.plot_regimes()
 strategy = bot.select_strategy()
 print(f"Active strategy: {strategy.__name__}")
 
-# 5. Run backtest
+# 5. Run backtest (out-of-sample, 70/30 train/test split)
 results = bot.backtest(cash=100_000, commission=0.001)
-print(f"Sharpe Ratio: {results['sharpe_ratio']:.2f}")
-print(f"Max Drawdown: {results['max_drawdown']:.2%}")
-print(f"Total Return: {results['total_return']:.2%}")
+print(results)
+#          metric       value                          description
+# 0  backtest_start  2023-08-11             Start of backtest period
+# 1  backtest_end    2023-10-18             End of backtest period
+# 2  sharpe_ratio    1.23                   Risk-adjusted return (annualized)
+# 3  max_drawdown   -0.15                   Worst peak-to-trough decline
+# ...
 
 # 6. Generate trading signals
 signals = bot.generate_signals()
@@ -145,6 +149,8 @@ bot.fetch_data("BTC", use_cache=True)
 
 | Metric | Description |
 |---|---|
+| `backtest_start` | Start of backtest period |
+| `backtest_end` | End of backtest period |
 | `sharpe_ratio` | Risk-adjusted return (annualized) |
 | `sortino_ratio` | Downside risk-adjusted return |
 | `max_drawdown` | Worst peak-to-trough decline |
@@ -185,7 +191,7 @@ bot.fetch_data("BTC", use_cache=True)
 | `compute_features(n_components)` | Compute TA indicators + PCA |
 | `detect_regime(n_regimes)` | Train HMM and classify regime |
 | `select_strategy()` | Pick strategy for current regime |
-| `backtest(strategy, cash, commission)` | Run backtest |
+| `backtest(strategy, cash, commission, test_ratio)` | Run out-of-sample backtest (returns DataFrame) |
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct)` | CPCV validation |
 | `generate_signals()` | Generate buy/sell/hold signals |
 | `run_pipeline(symbol="BTC")` | Execute full pipeline end-to-end |

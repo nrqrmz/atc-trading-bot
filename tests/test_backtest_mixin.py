@@ -45,21 +45,25 @@ class TestBacktestMixin:
         bot.select_strategy()
         results = bot.backtest()
 
-        assert isinstance(results, dict)
+        assert isinstance(results, pd.DataFrame)
+        assert list(results.columns) == ["metric", "value", "description"]
+        metrics = results["metric"].tolist()
         expected_keys = [
+            "backtest_start", "backtest_end",
             "sharpe_ratio", "sortino_ratio", "max_drawdown", "calmar_ratio",
             "win_rate", "profit_factor", "total_return", "buy_and_hold_return",
             "num_trades",
         ]
         for key in expected_keys:
-            assert key in results, f"Missing metric: {key}"
+            assert key in metrics, f"Missing metric: {key}"
 
     def test_backtest_with_explicit_strategy(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data)
         results = bot.backtest(strategy=BullStrategy)
 
-        assert isinstance(results, dict)
-        assert results["num_trades"] >= 0
+        assert isinstance(results, pd.DataFrame)
+        num_trades = results.loc[results["metric"] == "num_trades", "value"].iloc[0]
+        assert num_trades >= 0
 
     def test_backtest_stores_results(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
@@ -86,7 +90,21 @@ class TestBacktestMixin:
         bot.select_strategy()
         results = bot.backtest()
 
-        assert results["max_drawdown"] <= 0
+        max_dd = results.loc[results["metric"] == "max_drawdown", "value"].iloc[0]
+        assert max_dd <= 0
+
+    def test_backtest_includes_date_range(self, long_ohlcv_data):
+        bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
+        bot.select_strategy()
+        results = bot.backtest(test_ratio=0.3)
+
+        metrics = results["metric"].tolist()
+        assert "backtest_start" in metrics
+        assert "backtest_end" in metrics
+
+        start = results.loc[results["metric"] == "backtest_start", "value"].iloc[0]
+        end = results.loc[results["metric"] == "backtest_end", "value"].iloc[0]
+        assert start < end
 
     def test_cpcv_returns_list_of_metrics(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")

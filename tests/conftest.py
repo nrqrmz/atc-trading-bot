@@ -7,7 +7,7 @@ import pytest
 def sample_ohlcv_data():
     """Generate sample OHLCV data for testing."""
     np.random.seed(42)
-    n = 200
+    n = 300
     dates = pd.date_range(start="2023-01-01", periods=n, freq="1D")
     close = 30000 + np.cumsum(np.random.randn(n) * 500)
     high = close + np.abs(np.random.randn(n) * 200)
@@ -32,7 +32,7 @@ def sample_ohlcv_data():
 def sample_ohlcv_raw():
     """Raw OHLCV data as returned by CCXT (list of lists)."""
     np.random.seed(42)
-    n = 200
+    n = 300
     base_ts = 1672531200000  # 2023-01-01 UTC
     data = []
     close = 30000.0
