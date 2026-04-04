@@ -102,3 +102,42 @@ class RegimeMixin:
         means = n * n_features
         covars = n * n_features * (n_features + 1) // 2
         return start + trans + means + covars
+
+    def plot_regimes(self):
+        """Plot price with background colored by detected regime.
+
+        Returns:
+            matplotlib Figure, or None if no regimes detected.
+        """
+        if self.regimes is None or self.df is None:
+            warnings.warn("No regimes detected. Call detect_regime first.", PipelineWarning)
+            return
+
+        import matplotlib.pyplot as plt
+
+        regime_colors = {"bull": "#2ecc71", "bear": "#e74c3c", "sideways": "#f1c40f"}
+
+        fig, ax = plt.subplots(figsize=(14, 5))
+        ax.plot(self.df.index, self.df["Close"], color="black", linewidth=0.8)
+
+        # Color background spans by regime
+        start = 0
+        for i in range(1, len(self.regimes)):
+            if self.regimes[i] != self.regimes[start] or i == len(self.regimes) - 1:
+                end = i if self.regimes[i] != self.regimes[start] else i + 1
+                color = regime_colors.get(self.regimes[start], "#cccccc")
+                ax.axvspan(self.df.index[start], self.df.index[min(end, len(self.df) - 1)],
+                           alpha=0.25, color=color)
+                start = i
+
+        ax.set_title(f"Regime Detection — Current: {self.current_regime}")
+        ax.set_ylabel("Price")
+
+        # Legend
+        from matplotlib.patches import Patch
+        legend = [Patch(facecolor=c, alpha=0.25, label=r) for r, c in regime_colors.items()]
+        ax.legend(handles=legend, loc="upper left")
+
+        plt.tight_layout()
+        plt.show()
+        return fig

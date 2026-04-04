@@ -68,3 +68,20 @@ class TestFeatureMixin:
         with pytest.warns(PipelineWarning, match="fetch_data"):
             result = bot.compute_features()
         assert result is None
+
+    def test_features_summary_prints_output(self, sample_ohlcv_data, capsys):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+        bot.features_summary()
+
+        output = capsys.readouterr().out
+        assert "Total features:" in output
+        assert "PCA components:" in output
+        assert "variance explained" in output
+        assert "PC1" in output
+
+    def test_features_summary_warns_without_features(self):
+        bot = FeatureBot()
+        with pytest.warns(PipelineWarning, match="compute_features"):
+            result = bot.features_summary()
+        assert result is None

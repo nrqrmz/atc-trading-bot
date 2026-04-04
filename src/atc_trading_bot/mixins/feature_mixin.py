@@ -57,3 +57,27 @@ class FeatureMixin:
         actual_components = min(n_components, self.features_scaled.shape[1])
         self.pca = PCA(n_components=actual_components)
         self.features_pca = self.pca.fit_transform(self.features_scaled)
+
+    def features_summary(self, top_n: int = 5) -> None:
+        """Print a summary of computed features and PCA reduction.
+
+        Args:
+            top_n: Number of top features to show per PCA component. Default: 5.
+        """
+        if self.features is None or self.pca is None:
+            warnings.warn("No features computed. Call compute_features first.", PipelineWarning)
+            return
+
+        total = self.features.shape[1]
+        n_components = self.pca.n_components_
+        explained = self.pca.explained_variance_ratio_
+        total_var = explained.sum() * 100
+
+        print(f"Total features: {total}")
+        print(f"PCA components: {n_components} ({total_var:.1f}% variance explained)\n")
+
+        for i, ratio in enumerate(explained):
+            weights = np.abs(self.pca.components_[i])
+            top_idx = weights.argsort()[::-1][:top_n]
+            top_names = [self.features.columns[j] for j in top_idx]
+            print(f"  PC{i+1} ({ratio*100:.1f}%): {', '.join(top_names)}")

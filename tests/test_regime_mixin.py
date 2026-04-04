@@ -97,3 +97,21 @@ class TestRegimeMixin:
         bot.detect_regime()
 
         assert bot.current_regime == bot.regimes[-1]
+
+    def test_plot_regimes_returns_figure(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        from matplotlib.figure import Figure
+
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca)
+        bot.detect_regime()
+        fig = bot.plot_regimes()
+
+        assert isinstance(fig, Figure)
+
+    def test_plot_regimes_warns_without_regimes(self):
+        bot = RegimeBot(df=pd.DataFrame({"Close": [1, 2, 3]}))
+        with pytest.warns(PipelineWarning, match="detect_regime"):
+            result = bot.plot_regimes()
+        assert result is None
