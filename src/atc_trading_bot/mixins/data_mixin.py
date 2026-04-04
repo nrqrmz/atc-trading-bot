@@ -1,8 +1,10 @@
 import os
+import warnings
 from pathlib import Path
 
 import ccxt
 import pandas as pd
+from atc_trading_bot.pipeline_warning import PipelineWarning
 
 
 class DataMixin:
@@ -36,9 +38,19 @@ class DataMixin:
             return symbol
         return f"{symbol}/USDT"
 
-    def fetch_data(self, symbol: str, timeframe: str | None = None,
-                   since: str | None = None, use_cache: bool = False) -> pd.DataFrame:
+    def fetch_data(self, symbol: str | None = None, timeframe: str | None = None,
+                   since: str | None = None, use_cache: bool = False) -> pd.DataFrame | None:
         """Fetch OHLCV data for a symbol. Uses cache if available and requested."""
+        if symbol is None:
+            if self.symbols:
+                symbol = self.symbols[0]
+            else:
+                warnings.warn(
+                    "No symbol provided and no default symbols configured. "
+                    "Pass a symbol to fetch_data or set symbols in the constructor.",
+                    PipelineWarning,
+                )
+                return
         symbol = self._normalize_symbol(symbol)
         tf = timeframe or self.timeframe
 

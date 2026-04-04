@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.data_mixin import DataMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 
 
 class DataBot(DataMixin):
@@ -123,6 +124,25 @@ class TestDataMixin:
         """Mix of short and full symbols."""
         bot = DataBot(symbols=["BTC", "ETH/USDT", "SOL"])
         assert bot.symbols == ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+    @patch("ccxt.binanceus")
+    def test_fetch_data_uses_default_symbol(self, mock_exchange_cls, sample_ohlcv_raw):
+        """fetch_data() without symbol uses first configured symbol."""
+        bot = DataBot(symbols=["BTC/USDT"])
+        mock_exchange = MagicMock()
+        mock_exchange.fetch_ohlcv.return_value = sample_ohlcv_raw
+        bot.exchange = mock_exchange
+
+        bot.fetch_data()
+
+        mock_exchange.fetch_ohlcv.assert_called_once_with("BTC/USDT", "1d", since=None)
+
+    def test_fetch_data_warns_without_symbol(self):
+        """fetch_data() without symbol and no configured symbols warns."""
+        bot = DataBot(symbols=[])
+        with pytest.warns(PipelineWarning, match="No symbol provided"):
+            result = bot.fetch_data()
+        assert result is None
 
     @patch("ccxt.binanceus")
     def test_fetch_data_normalizes_symbol(self, mock_exchange_cls, sample_ohlcv_raw):
