@@ -125,6 +125,16 @@ class TestDataMixin:
         bot = DataBot(symbols=["BTC", "ETH/USDT", "SOL"])
         assert bot.symbols == ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
+    def test_normalize_symbol_lowercase(self):
+        """Lowercase symbols are uppercased."""
+        bot = DataBot(symbols=["btc", "eth/usdt", "sol"])
+        assert bot.symbols == ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+    def test_normalize_symbol_mixedcase(self):
+        """Mixed case symbols are uppercased."""
+        bot = DataBot(symbols=["Btc", "Eth/Usdt"])
+        assert bot.symbols == ["BTC/USDT", "ETH/USDT"]
+
     @patch("ccxt.binanceus")
     def test_fetch_data_uses_default_symbol(self, mock_exchange_cls, sample_ohlcv_raw):
         """fetch_data() without symbol uses first configured symbol."""

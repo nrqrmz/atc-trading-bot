@@ -33,7 +33,8 @@ class DataMixin:
             self.data_dir = data_dir
 
     def _normalize_symbol(self, symbol: str) -> str:
-        """Convert short symbol like 'BTC' to CCXT format 'BTC/USDT'."""
+        """Convert short symbol like 'btc' to CCXT format 'BTC/USDT'."""
+        symbol = symbol.upper()
         if "/" in symbol:
             return symbol
         return f"{symbol}/USDT"
