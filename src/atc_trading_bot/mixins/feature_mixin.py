@@ -20,7 +20,11 @@ class FeatureMixin:
         self.pca: PCA | None = None
 
     def compute_features(self, n_components: int = 10) -> None:
-        """Compute TA features, standardize, and apply PCA."""
+        """Compute TA features, standardize, and apply PCA.
+
+        Args:
+            n_components: Number of PCA components to retain. Capped to available features.
+        """
         if self.df is None:
             warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return

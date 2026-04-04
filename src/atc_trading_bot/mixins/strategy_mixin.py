@@ -22,7 +22,11 @@ class StrategyMixin:
         self.active_strategy: type[Strategy] | None = None
 
     def select_strategy(self) -> type[Strategy]:
-        """Select the appropriate strategy based on the current regime."""
+        """Select the appropriate strategy based on the current regime.
+
+        Returns:
+            The selected Strategy class, or None if no regime is detected.
+        """
         if self.current_regime is None:
             warnings.warn("No regime detected. Call detect_regime first.", PipelineWarning)
             return

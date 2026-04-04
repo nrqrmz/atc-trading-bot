@@ -41,7 +41,18 @@ class DataMixin:
 
     def fetch_data(self, symbol: str | None = None, timeframe: str | None = None,
                    since: str | None = None, use_cache: bool = False) -> pd.DataFrame | None:
-        """Fetch OHLCV data for a symbol. Uses cache if available and requested."""
+        """Fetch OHLCV data for a symbol. Uses cache if available and requested.
+
+        Args:
+            symbol: Trading pair, e.g. "BTC" or "BTC/USDT". Case insensitive.
+                Defaults to the first symbol in self.symbols if omitted.
+            timeframe: Candlestick timeframe, e.g. "1h", "1d". Defaults to self.timeframe.
+            since: ISO 8601 start date, e.g. "2024-01-01T00:00:00Z". Defaults to exchange default.
+            use_cache: If True, load from CSV cache before hitting the exchange.
+
+        Returns:
+            DataFrame with OHLCV columns, or None if no symbol is available.
+        """
         if symbol is None:
             if self.symbols:
                 symbol = self.symbols[0]

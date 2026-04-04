@@ -18,7 +18,12 @@ class RegimeMixin:
         self.regime_metrics: dict | None = None
 
     def detect_regime(self, n_regimes: int = 3, n_iter: int = 100) -> None:
-        """Train HMM on PCA features and predict regimes."""
+        """Train HMM on PCA features and predict regimes.
+
+        Args:
+            n_regimes: Number of hidden states (regimes) for the HMM. Default: 3.
+            n_iter: Maximum EM iterations for HMM training. Default: 100.
+        """
         if self.features_pca is None:
             warnings.warn("No features available. Call compute_features first.", PipelineWarning)
             return

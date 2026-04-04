@@ -22,7 +22,17 @@ class BacktestMixin:
 
     def backtest(self, strategy: type[Strategy] | None = None,
                  cash: float = 100_000, commission: float = 0.001) -> dict:
-        """Run a backtest with the given or active strategy."""
+        """Run a backtest with the given or active strategy.
+
+        Args:
+            strategy: Strategy class to backtest. Defaults to self.active_strategy.
+            cash: Starting capital. Default: 100,000.
+            commission: Trading commission as a fraction. Default: 0.001 (0.1%).
+
+        Returns:
+            Dict with performance metrics (Sharpe, Sortino, Max Drawdown, etc.),
+            or None if prerequisites are missing.
+        """
         if self.df is None:
             warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return
