@@ -149,36 +149,33 @@ class RegimeMixin:
             line=dict(color="black", width=1),
         ))
 
+        # Legend traces for regime colors
+        for regime, color in regime_colors.items():
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(size=10, color=color),
+                name=regime.capitalize(),
+            ))
+
         # Color background spans by regime
-        added_labels = set()
         start = 0
         for i in range(1, len(self.regimes)):
             if self.regimes[i] != self.regimes[start]:
-                regime = self.regimes[start]
-                color = regime_colors.get(regime, "#cccccc")
-                show_legend = regime not in added_labels
-                added_labels.add(regime)
+                color = regime_colors.get(self.regimes[start], "#cccccc")
                 fig.add_vrect(
                     x0=plot_df.index[start],
                     x1=plot_df.index[i - 1],
                     fillcolor=color, opacity=0.2,
                     layer="below", line_width=0,
-                    annotation_text=regime if show_legend else None,
-                    annotation_position="top left",
                 )
                 start = i
         # Final segment
-        regime = self.regimes[start]
-        color = regime_colors.get(regime, "#cccccc")
-        show_legend = regime not in added_labels
-        added_labels.add(regime)
+        color = regime_colors.get(self.regimes[start], "#cccccc")
         fig.add_vrect(
             x0=plot_df.index[start],
             x1=plot_df.index[-1],
             fillcolor=color, opacity=0.2,
             layer="below", line_width=0,
-            annotation_text=regime if show_legend else None,
-            annotation_position="top left",
         )
 
         fig.update_layout(
@@ -188,5 +185,4 @@ class RegimeMixin:
             hovermode="x unified",
         )
 
-        fig.show()
         return fig
