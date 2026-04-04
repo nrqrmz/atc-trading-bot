@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.backtest_mixin import BacktestMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 from atc_trading_bot.mixins.strategy_mixin import StrategyMixin
 from atc_trading_bot.strategies.bull_strategy import BullStrategy
 
@@ -70,13 +71,13 @@ class TestBacktestMixin:
     def test_backtest_warns_without_data(self):
         bot = BacktestBot(current_regime="bull")
         bot.select_strategy()
-        with pytest.warns(UserWarning, match="fetch_data"):
+        with pytest.warns(PipelineWarning, match="fetch_data"):
             result = bot.backtest()
         assert result is None
 
     def test_backtest_warns_without_strategy(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data)
-        with pytest.warns(UserWarning, match="select_strategy"):
+        with pytest.warns(PipelineWarning, match="select_strategy"):
             result = bot.backtest()
         assert result is None
 

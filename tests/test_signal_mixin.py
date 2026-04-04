@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.signal_mixin import SignalMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 from atc_trading_bot.strategies.bull_strategy import BullStrategy
 
 
@@ -65,18 +66,18 @@ class TestSignalMixin:
 
     def test_warns_without_data(self):
         bot = SignalBot(current_regime="bull", active_strategy=BullStrategy)
-        with pytest.warns(UserWarning, match="fetch_data"):
+        with pytest.warns(PipelineWarning, match="fetch_data"):
             result = bot.generate_signals()
         assert result is None
 
     def test_warns_without_regime(self, trending_data):
         bot = SignalBot(df=trending_data, active_strategy=BullStrategy)
-        with pytest.warns(UserWarning, match="detect_regime"):
+        with pytest.warns(PipelineWarning, match="detect_regime"):
             result = bot.generate_signals()
         assert result is None
 
     def test_warns_without_strategy(self, trending_data):
         bot = SignalBot(df=trending_data, current_regime="bull")
-        with pytest.warns(UserWarning, match="select_strategy"):
+        with pytest.warns(PipelineWarning, match="select_strategy"):
             result = bot.generate_signals()
         assert result is None

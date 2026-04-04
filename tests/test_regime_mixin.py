@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.regime_mixin import RegimeMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 
 
 class RegimeBot(RegimeMixin):
@@ -86,7 +87,7 @@ class TestRegimeMixin:
 
     def test_warns_without_features(self):
         bot = RegimeBot(df=pd.DataFrame({"Close": [1, 2, 3]}))
-        with pytest.warns(UserWarning, match="compute_features"):
+        with pytest.warns(PipelineWarning, match="compute_features"):
             result = bot.detect_regime()
         assert result is None
 

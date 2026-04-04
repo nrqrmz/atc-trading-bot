@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.feature_mixin import FeatureMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 
 
 class FeatureBot(FeatureMixin):
@@ -64,6 +65,6 @@ class TestFeatureMixin:
 
     def test_warns_without_data(self):
         bot = FeatureBot()
-        with pytest.warns(UserWarning, match="fetch_data"):
+        with pytest.warns(PipelineWarning, match="fetch_data"):
             result = bot.compute_features()
         assert result is None

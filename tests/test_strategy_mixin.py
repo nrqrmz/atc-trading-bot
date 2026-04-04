@@ -2,6 +2,7 @@ import pytest
 from backtesting import Strategy
 
 from atc_trading_bot.mixins.strategy_mixin import StrategyMixin
+from atc_trading_bot.pipeline_warning import PipelineWarning
 from atc_trading_bot.strategies.bear_strategy import BearStrategy
 from atc_trading_bot.strategies.bull_strategy import BullStrategy
 from atc_trading_bot.strategies.sideways_strategy import SidewaysStrategy
@@ -38,7 +39,7 @@ class TestStrategyMixin:
 
     def test_warns_without_regime(self):
         bot = StrategyBot()
-        with pytest.warns(UserWarning, match="detect_regime"):
+        with pytest.warns(PipelineWarning, match="detect_regime"):
             result = bot.select_strategy()
         assert result is None
 

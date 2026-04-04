@@ -1,6 +1,7 @@
 import warnings
 
 import numpy as np
+from atc_trading_bot.pipeline_warning import PipelineWarning
 from hmmlearn.hmm import GaussianHMM
 
 
@@ -19,7 +20,7 @@ class RegimeMixin:
     def detect_regime(self, n_regimes: int = 3, n_iter: int = 100) -> None:
         """Train HMM on PCA features and predict regimes."""
         if self.features_pca is None:
-            warnings.warn("No features available. Call compute_features first.")
+            warnings.warn("No features available. Call compute_features first.", PipelineWarning)
             return
 
         model = GaussianHMM(

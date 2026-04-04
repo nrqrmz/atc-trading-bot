@@ -1,6 +1,7 @@
 import warnings
 
 import numpy as np
+from atc_trading_bot.pipeline_warning import PipelineWarning
 import pandas as pd
 import ta
 from sklearn.decomposition import PCA
@@ -21,7 +22,7 @@ class FeatureMixin:
     def compute_features(self, n_components: int = 10) -> None:
         """Compute TA features, standardize, and apply PCA."""
         if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return
 
         with warnings.catch_warnings():

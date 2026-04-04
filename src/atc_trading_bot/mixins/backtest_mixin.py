@@ -2,6 +2,7 @@ import itertools
 import warnings
 
 import numpy as np
+from atc_trading_bot.pipeline_warning import PipelineWarning
 import pandas as pd
 from backtesting import Strategy
 from backtesting.lib import FractionalBacktest as Backtest
@@ -23,12 +24,12 @@ class BacktestMixin:
                  cash: float = 100_000, commission: float = 0.001) -> dict:
         """Run a backtest with the given or active strategy."""
         if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return
 
         strat = strategy or self.active_strategy
         if strat is None:
-            warnings.warn("No strategy selected. Call select_strategy first.")
+            warnings.warn("No strategy selected. Call select_strategy first.", PipelineWarning)
             return
 
         bt = Backtest(self.df, strat, cash=cash, commission=commission, finalize_trades=True)
@@ -48,7 +49,7 @@ class BacktestMixin:
         Embargo adds an additional gap after each test set.
         """
         if self.df is None:
-            warnings.warn("No data available. Call fetch_data first.")
+            warnings.warn("No data available. Call fetch_data first.", PipelineWarning)
             return
 
         n = len(self.df)
