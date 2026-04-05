@@ -151,14 +151,16 @@ bot.select_strategy()
 print(f"Active: {bot.active_strategy.__name__}")
 
 # Browse all registered strategies
-from atc_trading_bot.mixins.strategy_mixin import StrategyMixin
+bot.strategies_summary()
+#          strategy                              description best_regimes    worst_regimes
+# 0    BullStrategy    Trend following with SMA crossovers         bull         sideways
+# 1    BearStrategy    Defensive short mean reversion...           bear             bull
+# 2  SidewaysStrategy  Bollinger Bands + RSI mean reversion    sideways       bull, bear
+# 3  MomentumStrategy  ROC + RSI momentum following              bull         sideways
+# ...
 
-for meta in StrategyMixin.list_strategies():
-    print(f"{meta.strategy_cls.__name__}: {meta.description}")
-    print(f"  Best for: {meta.best_regimes}, Worst for: {meta.worst_regimes}")
-
-# Get all strategies suitable for a specific regime
-bull_options = StrategyMixin.get_strategies_for_regime("bull")
+# Filter by regime
+bot.strategies_summary(regime="bull")
 ```
 
 #### 6 Strategies
@@ -451,71 +453,151 @@ atc-trading-bot/
 Bot(exchange_id="binanceus", symbols=[], timeframe="1d", api_key="", secret="", data_dir=None)
 ```
 
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `exchange_id` | `str` | `"binanceus"` | CCXT exchange identifier (any exchange supported by CCXT) |
+| `symbols` | `list[str]` | `[]` | Trading pairs — short (`"BTC"`) or full (`"BTC/USDT"`) |
+| `timeframe` | `str` | `"1d"` | Candlestick timeframe (`"1m"`, `"5m"`, `"1h"`, `"1d"`, etc.) |
+| `api_key` | `str` | `""` | Exchange API key (optional — public endpoints work without) |
+| `secret` | `str` | `""` | Exchange API secret |
+| `data_dir` | `str \| None` | `None` | Directory for CSV cache. Defaults to `data/` in project root |
+
 ### Pipeline Methods
+
+These methods form the core pipeline. All return `self` for method chaining (except `backtest`, `cross_validate_cpcv`, and `generate_signals` which return results).
 
 | Method | Returns | Description |
 |---|---|---|
-| `fetch_data(symbol, timeframe, since, use_cache)` | `self` | Fetch OHLCV data with pagination |
-| `compute_features(n_components=10)` | `self` | Compute TA indicators + PCA |
-| `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train HMM and classify regime |
-| `select_strategy()` | `self` | Pick strategy for current regime |
-| `backtest(strategy, cash, commission, test_ratio, leverage)` | `DataFrame` | Out-of-sample backtest |
-| `cross_validate_cpcv(n_splits, purge_gap, embargo_pct)` | `list[dict]` | CPCV validation |
-| `generate_signals(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals |
-| `run_pipeline(symbol="BTC")` | `dict` | Execute full pipeline end-to-end |
+| `fetch_data(symbol, timeframe, since, use_cache)` | `self` | Fetch OHLCV data with automatic pagination. `symbol` accepts short (`"BTC"`) or full (`"BTC/USDT"`) format. `since` is ISO 8601 (`"2024-01-01T00:00:00Z"`). |
+| `compute_features(n_components=10)` | `self` | Compute 80+ TA indicators, curate, standardize, and reduce with PCA |
+| `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train Gaussian HMM with sticky transitions and classify regimes |
+| `select_strategy()` | `self` | Pick the default strategy for the current regime from the registry |
+| `backtest(strategy, cash, commission, test_ratio, n_components, n_regimes, leverage)` | `DataFrame` | Out-of-sample backtest with train/test split and automatic overfitting detection |
+| `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `list[dict]` | Combinatorial Purged Cross-Validation with embargo |
+| `generate_signals(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals with HMM confidence filtering |
+| `run_pipeline(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute full pipeline end-to-end (fetch → features → regime → strategy → backtest → signals) |
+
+### Strategy Methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `strategies_summary(regime=None)` | `DataFrame` | Summary of all strategies with columns: `strategy`, `description`, `best_regimes`, `worst_regimes`. Pass `regime="bull"` to filter |
+| `get_strategy_for_regime(regime)` | `type[Strategy]` | Get the default strategy class for a specific regime (`"bull"`, `"bear"`, `"sideways"`) |
+| `get_strategies_for_regime(regime)` | `list[StrategyMeta]` | Get all strategies whose `best_regimes` includes the given regime (static method) |
+| `list_strategies()` | `list[StrategyMeta]` | List all registered strategies with their metadata (static method) |
 
 ### Analysis Methods
 
 | Method | Returns | Description |
 |---|---|---|
-| `scan_regimes()` | `DataFrame` | Quick regime scan across all symbols |
-| `fetch_sentiment(days=30)` | `DataFrame` | Fetch Fear & Greed Index |
-| `merge_sentiment()` | `DataFrame` | Merge sentiment into OHLCV data |
-| `features_summary(top_n=5)` | `None` | Print PCA reduction summary |
+| `scan_regimes(n_components=10, n_regimes=3)` | `DataFrame` | Quick regime scan across all configured `symbols`. Returns columns: `symbol`, `regime`, `confidence`, `last_price`, `pct_change_24h` |
+| `fetch_sentiment(days=30)` | `DataFrame` | Fetch Crypto Fear & Greed Index. Returns columns: `date`, `value` (0-100), `classification` |
+| `merge_sentiment()` | `DataFrame` | Merge sentiment into `self.df` via `merge_asof` (backward-looking, no look-ahead bias). Adds `sentiment_value` and `sentiment_classification` columns |
+| `features_summary(top_n=5)` | `None` | Print PCA reduction summary — total features, variance explained, top contributing features per component |
 
 ### Visualization Methods
 
+All charts use Plotly with the `plotly_dark` template.
+
 | Method | Returns | Description |
 |---|---|---|
-| `plot_regimes()` | `Figure` | Price chart colored by regime |
-| `plot_equity_curve()` | `Figure` | Equity curve + drawdown |
-| `plot_signals()` | `Figure` | Price with signal markers |
-| `plot_cpcv_results()` | `Figure` | CPCV fold comparison |
-| `plot_feature_importance(top_n=15)` | `Figure` | PCA weighted loadings |
+| `plot_regimes()` | `Figure` | Price chart with background colored by detected regime (bull/bear/sideways) |
+| `plot_equity_curve()` | `Figure` | Equity curve (top) + drawdown (bottom) from backtest results |
+| `plot_signals()` | `Figure` | Price with buy/sell/hold signal marker on the last bar, showing confidence |
+| `plot_cpcv_results()` | `Figure` | 2x2 grid comparing Sharpe, return, drawdown, and win rate across CPCV folds |
+| `plot_feature_importance(top_n=15)` | `Figure` | Horizontal bar chart of PCA-weighted feature loadings |
 
 ### Persistence Methods
 
 | Method | Returns | Description |
 |---|---|---|
-| `save_model(path)` | `str` | Save trained model to disk |
-| `load_model(path)` | `dict` | Load model and return metadata |
+| `save_model(path)` | `str` | Save trained pipeline state (HMM, PCA, scaler, regimes, metadata) to disk via joblib |
+| `load_model(path)` | `dict` | Load a saved model. Returns metadata dict (`saved_at`, `exchange_id`, `symbols`, `timeframe`). Restores `hmm_model`, `pca`, `scaler`, `current_regime`, `regimes`, `regime_metrics` |
 
 ### Trading Methods
 
+Paper trading via exchange testnet. Uses a separate `testnet_exchange` connection to avoid interfering with the data-fetching `exchange`.
+
 | Method | Returns | Description |
 |---|---|---|
-| `connect_testnet(api_key, secret)` | `self` | Connect to exchange testnet |
-| `execute_signal(symbol, amount)` | `self` | Execute current signal as order |
-| `get_balance()` | `dict` | Fetch testnet balance |
-| `get_open_positions()` | `list` | List open positions |
+| `connect_testnet(api_key, secret, exchange_id="binanceus")` | `self` | Connect to an exchange's testnet (sandbox mode) for paper trading |
+| `execute_signal(symbol="BTC/USDT", amount=0.001)` | `self` | Execute the current signal (`self.signals`) as a market order on the testnet |
+| `get_balance()` | `dict \| None` | Fetch testnet account balance |
+| `get_open_positions()` | `list \| None` | List open positions on the testnet |
 
-### Key Attributes
+### Instance Attributes
 
-| Attribute | Type | Set by |
+Set by the pipeline as each step executes. All start as `None` until their corresponding method is called.
+
+#### Data (set by `DataMixin`)
+
+| Attribute | Type | Description |
 |---|---|---|
-| `df` | `DataFrame` | `fetch_data()` |
-| `features` | `DataFrame` | `compute_features()` |
-| `features_pca` | `ndarray` | `compute_features()` |
-| `pca` | `PCA` | `compute_features()` |
-| `regimes` | `list[str]` | `detect_regime()` |
-| `current_regime` | `str` | `detect_regime()` |
-| `hmm_model` | `GaussianHMM` | `detect_regime()` |
-| `regime_metrics` | `dict` | `detect_regime()` |
-| `active_strategy` | `type[Strategy]` | `select_strategy()` |
-| `results` | `DataFrame` | `backtest()` |
-| `cv_results` | `list[dict]` | `cross_validate_cpcv()` |
-| `signals` | `dict` | `generate_signals()` |
-| `sentiment_df` | `DataFrame` | `fetch_sentiment()` |
+| `exchange_id` | `str` | CCXT exchange identifier (e.g. `"binanceus"`) |
+| `symbols` | `list[str]` | Normalized trading pairs (e.g. `["BTC/USDT", "ETH/USDT"]`) |
+| `timeframe` | `str` | Candlestick timeframe (e.g. `"1d"`) |
+| `exchange` | `ccxt.Exchange` | CCXT exchange instance used for fetching market data |
+| `data_dir` | `str` | Directory path for CSV cache files |
+| `df` | `DataFrame \| None` | OHLCV DataFrame with columns `Open`, `High`, `Low`, `Close`, `Volume` and a `DatetimeIndex` |
+
+#### Features (set by `FeatureMixin` via `compute_features()`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `features` | `DataFrame \| None` | Curated TA indicator DataFrame after exclusion, cleaning, and correlation filtering. Columns are the surviving indicator names |
+| `features_scaled` | `ndarray \| None` | StandardScaler-transformed features (mean ~0, std ~1). Shape: `(n_samples, n_features)` |
+| `features_pca` | `ndarray \| None` | PCA-reduced features. Shape: `(n_samples, n_components)` |
+| `features_index` | `Index \| None` | DatetimeIndex of valid rows after NaN removal — used to align features with `self.df` in downstream steps |
+| `scaler` | `StandardScaler \| None` | Fitted scaler instance (for transforming new data with the same parameters) |
+| `pca` | `PCA \| None` | Fitted PCA instance. Access `pca.explained_variance_ratio_` for variance per component, `pca.components_` for loadings |
+
+#### Regimes (set by `RegimeMixin` via `detect_regime()`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `regimes` | `list[str] \| None` | Regime label per observation after smoothing: `"bull"`, `"bear"`, or `"sideways"`. Length matches `features_pca` |
+| `current_regime` | `str \| None` | Regime of the last observation (e.g. `"bull"`) |
+| `hmm_model` | `GaussianHMM \| None` | Fitted HMM model. Use `hmm_model.predict_proba(X)` for posterior probabilities |
+| `regime_metrics` | `dict \| None` | Classification quality: `{"log_likelihood": float, "bic": float, "avg_duration": float}` |
+
+#### Strategy (set by `StrategyMixin` via `select_strategy()`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `active_strategy` | `type[Strategy] \| None` | The selected `backtesting.py` Strategy class for the current regime |
+
+#### Backtest (set by `BacktestMixin`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `results` | `DataFrame \| None` | Backtest results with columns `metric`, `value`, `description`. Set by `backtest()` |
+| `cv_results` | `list[dict] \| None` | List of metric dicts per CPCV fold. Each dict has `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `calmar_ratio`, `win_rate`, `profit_factor`, `total_return`, `buy_and_hold_return`, `num_trades`, `fold`. Set by `cross_validate_cpcv()` |
+
+#### Signals (set by `SignalMixin` via `generate_signals()`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `signals` | `dict \| None` | `{"regime": str, "strategy": str, "signal": "buy"\|"sell"\|"hold", "confidence": float}` |
+
+#### Sentiment (set by `SentimentMixin`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `sentiment_df` | `DataFrame \| None` | Fear & Greed data with columns `date`, `value` (0-100), `classification`. Set by `fetch_sentiment()` |
+
+#### Trading (set by `TradingMixin`)
+
+| Attribute | Type | Description |
+|---|---|---|
+| `testnet_exchange` | `ccxt.Exchange \| None` | Separate CCXT exchange instance in sandbox mode for paper trading. Set by `connect_testnet()` |
+| `last_order` | `dict \| None` | The most recent order response from the testnet. Set by `execute_signal()` |
+
+### Class Attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `REGIME_LABELS` | `list[str]` | `["bull", "bear", "sideways"]` — valid regime names |
+| `REGIME_STRATEGY_MAP` | `dict[str, type[Strategy]]` | Regime → default strategy mapping, built automatically from the strategy registry |
 
 ## Running Tests
 

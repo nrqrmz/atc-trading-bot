@@ -1,6 +1,7 @@
 import warnings
 from dataclasses import dataclass
 
+import pandas as pd
 from backtesting import Strategy
 from atc_trading_bot.pipeline_warning import PipelineWarning
 
@@ -125,3 +126,29 @@ class StrategyMixin:
     def list_strategies() -> list[StrategyMeta]:
         """List all registered strategies with their metadata."""
         return list(STRATEGY_REGISTRY)
+
+    @staticmethod
+    def strategies_summary(regime: str | None = None) -> pd.DataFrame:
+        """Return a DataFrame summarizing all registered strategies.
+
+        Args:
+            regime: If provided, only show strategies whose best_regimes
+                includes this regime (e.g. "bull"). Default: show all.
+
+        Returns:
+            DataFrame with columns: strategy, description, best_regimes, worst_regimes.
+        """
+        entries = STRATEGY_REGISTRY
+        if regime is not None:
+            entries = [m for m in entries if regime in m.best_regimes]
+
+        rows = [
+            {
+                "strategy": m.strategy_cls.__name__,
+                "description": m.description,
+                "best_regimes": ", ".join(m.best_regimes),
+                "worst_regimes": ", ".join(m.worst_regimes),
+            }
+            for m in entries
+        ]
+        return pd.DataFrame(rows, columns=["strategy", "description", "best_regimes", "worst_regimes"])
