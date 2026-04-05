@@ -28,11 +28,11 @@ class TradingMixin:
             return False
         return True
 
-    def _require_exchange(self) -> bool:
+    def _require_testnet(self) -> bool:
         """Check that a testnet exchange connection has been established."""
-        if getattr(self, "exchange", None) is None:
+        if getattr(self, "testnet_exchange", None) is None:
             warnings.warn(
-                "No exchange connected. Call connect_testnet first.",
+                "No testnet connected. Call connect_testnet first.",
                 PipelineWarning,
             )
             return False
@@ -40,7 +40,7 @@ class TradingMixin:
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.exchange: ccxt.Exchange | None = None
+        self.testnet_exchange: ccxt.Exchange | None = None
         self.last_order: dict | None = None
 
     def connect_testnet(self, api_key: str, secret: str,
@@ -63,12 +63,12 @@ class TradingMixin:
             )
             return self
 
-        self.exchange = exchange_cls({
+        self.testnet_exchange = exchange_cls({
             "apiKey": api_key,
             "secret": secret,
             "enableRateLimit": True,
         })
-        self.exchange.set_sandbox_mode(True)
+        self.testnet_exchange.set_sandbox_mode(True)
         return self
 
     def execute_signal(self, symbol: str = "BTC/USDT",
@@ -87,7 +87,7 @@ class TradingMixin:
         """
         if not self._require_signals():
             return self
-        if not self._require_exchange():
+        if not self._require_testnet():
             return self
 
         signal = self.signals.get("signal")
@@ -99,7 +99,7 @@ class TradingMixin:
             return self
 
         try:
-            order = self.exchange.create_order(
+            order = self.testnet_exchange.create_order(
                 symbol=symbol,
                 type="market",
                 side=signal,
@@ -120,11 +120,11 @@ class TradingMixin:
         Returns:
             Balance dict from CCXT, or None if exchange is not connected.
         """
-        if not self._require_exchange():
+        if not self._require_testnet():
             return None
 
         try:
-            return self.exchange.fetch_balance()
+            return self.testnet_exchange.fetch_balance()
         except Exception as exc:
             warnings.warn(
                 f"Failed to fetch balance: {exc}",
@@ -139,11 +139,11 @@ class TradingMixin:
             List of position dicts from CCXT, or None if exchange
             is not connected.
         """
-        if not self._require_exchange():
+        if not self._require_testnet():
             return None
 
         try:
-            return self.exchange.fetch_positions()
+            return self.testnet_exchange.fetch_positions()
         except Exception as exc:
             warnings.warn(
                 f"Failed to fetch positions: {exc}",

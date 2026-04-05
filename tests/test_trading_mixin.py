@@ -24,7 +24,7 @@ class TestConnectTestnet:
 
             mock_ccxt.binanceus.assert_called_once()
             mock_exchange.set_sandbox_mode.assert_called_once_with(True)
-            assert bot.exchange is mock_exchange
+            assert bot.testnet_exchange is mock_exchange
             assert result is bot  # method chaining
 
     def test_connect_testnet_passes_credentials(self):
@@ -48,7 +48,7 @@ class TestConnectTestnet:
             bot.connect_testnet("key", "secret", exchange_id="bybit")
 
             mock_ccxt.bybit.assert_called_once()
-            assert bot.exchange is mock_exchange
+            assert bot.testnet_exchange is mock_exchange
 
     def test_connect_testnet_warns_unknown_exchange(self):
         bot = TradingBot()
@@ -59,19 +59,19 @@ class TestConnectTestnet:
             with pytest.warns(PipelineWarning, match="Unknown exchange"):
                 bot.connect_testnet("key", "secret", exchange_id="nonexistent_exchange")
 
-            assert bot.exchange is None
+            assert bot.testnet_exchange is None
 
 
 class TestExecuteSignal:
     def test_execute_buy_signal(self):
         signals = {"regime": "bull", "strategy": "BullStrategy", "signal": "buy", "confidence": 0.9}
         bot = TradingBot(signals=signals)
-        bot.exchange = MagicMock()
-        bot.exchange.create_order.return_value = {"id": "123", "status": "filled"}
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.create_order.return_value = {"id": "123", "status": "filled"}
 
         result = bot.execute_signal(symbol="BTC/USDT", amount=0.01)
 
-        bot.exchange.create_order.assert_called_once_with(
+        bot.testnet_exchange.create_order.assert_called_once_with(
             symbol="BTC/USDT", type="market", side="buy", amount=0.01,
         )
         assert bot.last_order == {"id": "123", "status": "filled"}
@@ -80,33 +80,33 @@ class TestExecuteSignal:
     def test_execute_sell_signal(self):
         signals = {"regime": "bear", "strategy": "BearStrategy", "signal": "sell", "confidence": 0.8}
         bot = TradingBot(signals=signals)
-        bot.exchange = MagicMock()
-        bot.exchange.create_order.return_value = {"id": "456", "status": "filled"}
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.create_order.return_value = {"id": "456", "status": "filled"}
 
         bot.execute_signal()
 
-        bot.exchange.create_order.assert_called_once_with(
+        bot.testnet_exchange.create_order.assert_called_once_with(
             symbol="BTC/USDT", type="market", side="sell", amount=0.001,
         )
 
     def test_execute_warns_hold_signal(self):
         signals = {"regime": "sideways", "strategy": "SidewaysStrategy", "signal": "hold", "confidence": 0.7}
         bot = TradingBot(signals=signals)
-        bot.exchange = MagicMock()
+        bot.testnet_exchange = MagicMock()
 
         with pytest.warns(PipelineWarning, match="hold"):
             bot.execute_signal()
 
-        bot.exchange.create_order.assert_not_called()
+        bot.testnet_exchange.create_order.assert_not_called()
 
     def test_execute_warns_without_signals(self):
         bot = TradingBot()
-        bot.exchange = MagicMock()
+        bot.testnet_exchange = MagicMock()
 
         with pytest.warns(PipelineWarning, match="generate_signals"):
             bot.execute_signal()
 
-        bot.exchange.create_order.assert_not_called()
+        bot.testnet_exchange.create_order.assert_not_called()
 
     def test_execute_warns_without_exchange(self):
         signals = {"regime": "bull", "strategy": "BullStrategy", "signal": "buy", "confidence": 0.9}
@@ -118,8 +118,8 @@ class TestExecuteSignal:
     def test_execute_warns_on_order_failure(self):
         signals = {"regime": "bull", "strategy": "BullStrategy", "signal": "buy", "confidence": 0.9}
         bot = TradingBot(signals=signals)
-        bot.exchange = MagicMock()
-        bot.exchange.create_order.side_effect = Exception("Insufficient funds")
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.create_order.side_effect = Exception("Insufficient funds")
 
         with pytest.warns(PipelineWarning, match="Order execution failed"):
             bot.execute_signal()
@@ -128,12 +128,12 @@ class TestExecuteSignal:
 class TestGetBalance:
     def test_get_balance_returns_balance(self):
         bot = TradingBot()
-        bot.exchange = MagicMock()
-        bot.exchange.fetch_balance.return_value = {"USDT": {"free": 10000, "used": 0, "total": 10000}}
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.fetch_balance.return_value = {"USDT": {"free": 10000, "used": 0, "total": 10000}}
 
         balance = bot.get_balance()
 
-        bot.exchange.fetch_balance.assert_called_once()
+        bot.testnet_exchange.fetch_balance.assert_called_once()
         assert balance == {"USDT": {"free": 10000, "used": 0, "total": 10000}}
 
     def test_get_balance_warns_without_exchange(self):
@@ -146,8 +146,8 @@ class TestGetBalance:
 
     def test_get_balance_warns_on_failure(self):
         bot = TradingBot()
-        bot.exchange = MagicMock()
-        bot.exchange.fetch_balance.side_effect = Exception("Network error")
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.fetch_balance.side_effect = Exception("Network error")
 
         with pytest.warns(PipelineWarning, match="Failed to fetch balance"):
             result = bot.get_balance()
@@ -158,12 +158,12 @@ class TestGetBalance:
 class TestGetOpenPositions:
     def test_get_open_positions_returns_list(self):
         bot = TradingBot()
-        bot.exchange = MagicMock()
-        bot.exchange.fetch_positions.return_value = [{"symbol": "BTC/USDT", "side": "long"}]
+        bot.testnet_exchange = MagicMock()
+        bot.testnet_exchange.fetch_positions.return_value = [{"symbol": "BTC/USDT", "side": "long"}]
 
         positions = bot.get_open_positions()
 
-        bot.exchange.fetch_positions.assert_called_once()
+        bot.testnet_exchange.fetch_positions.assert_called_once()
         assert positions == [{"symbol": "BTC/USDT", "side": "long"}]
 
     def test_get_open_positions_warns_without_exchange(self):
