@@ -13,11 +13,7 @@ Algorithmic trading bot for crypto markets that detects market regimes using Hid
 - **Overfitting Detection** — Automatic in-sample vs out-of-sample comparison with warnings
 - **Confidence Thresholding** — HMM posterior probabilities filter low-confidence signals
 - **Interactive Visualization** — Equity curves, signal charts, CPCV folds, feature importance (Plotly)
-- **Model Persistence** — Save/load trained models with joblib
-- **Multi-Symbol Scanner** — Quick regime scan across all configured assets
-- **Sentiment Integration** — Crypto Fear & Greed Index merged into features
 - **Leverage Support** — Margin trading in backtests
-- **Paper Trading** — Testnet order execution via CCXT
 - **Triple-Barrier Labeling** — ATR-calibrated take-profit/stop-loss/timeout labels (Lopez de Prado)
 - **3 Gradient Boosting Models** — LightGBM, CatBoost, XGBoost with TimeSeriesSplit
 - **Ensemble Methods** — VotingClassifier + StackingClassifier (meta-learner: LogisticRegression)
@@ -27,7 +23,7 @@ Algorithmic trading bot for crypto markets that detects market regimes using Hid
 - **Permutation Importance** — Model-agnostic feature importance as sanity check
 - **Method Chaining** — Fluent API: `bot.fetch_data("BTC").compute_features().detect_regime()`
 - **Automatic Pagination** — Handles exchange API limits for large date ranges
-- **95% Test Coverage** — 263 tests across 19 test modules
+- **95% Test Coverage** — 210 tests across 15 test modules
 
 ## Installation
 
@@ -82,7 +78,7 @@ fetch_data → compute_features → detect_regime → select_strategy → backte
     |              |                  |                |               |              |
   CCXT +      80+ TA indicators   HMM with       6 strategies    Out-of-sample   Confidence
   pagination  + PCA reduction     sticky          + registry      + CPCV          thresholding
-  + cache                         transitions     + risk mgmt     + overfit       + HMM posteriors
+                                  transitions     + risk mgmt     + overfit       + HMM posteriors
                                   + smoothing                     detection
 ```
 
@@ -101,7 +97,7 @@ fetch_data → compute_features → detect_regime → compute_labels → train_m
 
 ### 1. Data Fetching
 
-The `DataMixin` handles OHLCV data via CCXT with automatic pagination and CSV caching.
+The `DataMixin` handles OHLCV data via CCXT with automatic pagination.
 
 ```python
 from atc_trading_bot import Bot
@@ -110,9 +106,6 @@ bot = Bot(symbols=["BTC", "ETH"])
 
 # Fetch from exchange (paginated automatically for large date ranges)
 bot.fetch_data("BTC", since="2022-01-01T00:00:00Z")
-
-# Use cached data to avoid repeated API calls
-bot.fetch_data("BTC", use_cache=True)
 
 # Access the raw DataFrame
 print(bot.df.tail())
@@ -332,84 +325,7 @@ bot.plot_feature_importance(top_n=15)
 bot.plot_regimes()
 ```
 
-### 8. Model Persistence
-
-The `PersistenceMixin` saves and loads trained models with joblib.
-
-```python
-# Save after training
-bot.save_model("models/btc_bull_v1.joblib")
-
-# Load in a new session — skip straight to signals
-bot2 = Bot(symbols=["BTC"])
-metadata = bot2.load_model("models/btc_bull_v1.joblib")
-print(metadata)  # {'saved_at': '...', 'exchange_id': 'binanceus', ...}
-
-# Now bot2 has the HMM, PCA, scaler, regime — ready to select_strategy
-bot2.fetch_data("BTC", use_cache=True)
-bot2.select_strategy()
-signals = bot2.generate_signals()
-```
-
-### 9. Multi-Symbol Scanner
-
-The `ScannerMixin` provides a quick regime scan across all configured assets.
-
-```python
-bot = Bot(symbols=["BTC", "ETH", "SOL"])
-scan = bot.scan_regimes()
-print(scan)
-```
-
-| symbol | regime | confidence | last_price | pct_change_24h |
-|---|---|---|---|---|
-| BTC/USDT | bull | 0.87 | 94800.0 | 0.023 |
-| ETH/USDT | sideways | 0.65 | 3400.0 | -0.008 |
-| SOL/USDT | bear | 0.72 | 185.0 | -0.041 |
-
-### 10. Sentiment Integration
-
-The `SentimentMixin` fetches the Crypto Fear & Greed Index and merges it into features.
-
-```python
-# Fetch last 30 days of sentiment
-bot.fetch_sentiment(days=30)
-print(bot.sentiment_df.tail())
-```
-
-| date | value | classification |
-|---|---|---|
-| 2024-12-23 | 72 | Greed |
-| 2024-12-24 | 68 | Greed |
-| 2024-12-25 | 73 | Greed |
-
-```python
-
-# Merge into OHLCV DataFrame (backward-looking, no look-ahead bias)
-bot.merge_sentiment()
-print(bot.df[["Close", "sentiment_value", "sentiment_classification"]].tail())
-```
-
-### 11. Paper Trading
-
-The `TradingMixin` enables testnet order execution.
-
-```python
-# Connect to exchange testnet
-bot.connect_testnet(api_key="your_key", secret="your_secret")
-
-# Check balance
-balance = bot.get_balance()
-print(balance)
-
-# Execute the current signal as a market order
-bot.execute_signal(symbol="BTC/USDT", amount=0.001)
-
-# Check open positions
-positions = bot.get_open_positions()
-```
-
-### 12. Triple-Barrier Labeling
+### 8. Triple-Barrier Labeling
 
 The `LabelingMixin` replaces naive "price went up → buy" labels with a realistic triple-barrier method (Lopez de Prado). For each bar, three exit conditions race against each other:
 
@@ -430,7 +346,7 @@ print(bot.labels_summary())
 
 **Why this matters:** Fixed-horizon labels (e.g. "did price go up tomorrow?") ignore how you would actually trade. Triple-barrier labels mirror real trading with stops and targets, producing more balanced classes and more realistic model training.
 
-### 13. ML Models
+### 9. ML Models
 
 The `ModelMixin` trains three gradient boosting classifiers and two ensemble methods, then selects the best by out-of-sample F1 score.
 
@@ -462,7 +378,7 @@ print(f"Last signal: {predictions[-1]}")  # -1 (sell), 0 (hold), or 1 (buy)
 
 **Overfitting detection:** Automatically compares cross-validation F1 vs out-of-sample F1. Warns if OOS drops below 70% of CV.
 
-### 14. Hyperparameter Optimization
+### 10. Hyperparameter Optimization
 
 The `OptimizationMixin` uses Optuna (Bayesian optimization with TPE) to find optimal hyperparameters — 10-50x more efficient than GridSearchCV.
 
@@ -498,7 +414,7 @@ print(wf_results)
 
 **CPCV vs Walk-Forward:** CPCV is for research (model selection across many paths). Walk-Forward is for production (always testing on future data with sliding windows).
 
-### 15. Model Explainability
+### 11. Model Explainability
 
 The `ExplainabilityMixin` uses SHAP to explain why the model makes each prediction. Trains a separate LightGBM on raw features (not PCA) so feature names are human-readable.
 
@@ -518,13 +434,13 @@ fig.show()
 
 **Why SHAP over basic feature importance:** `model.feature_importances_` only shows which features the tree splits on most often — it's biased toward high-cardinality features and doesn't detect data leakage. SHAP provides per-prediction explanations showing exactly how each indicator pushes the prediction toward buy or sell.
 
-### 16. Rules vs ML Comparison
+### 12. Rules vs ML Comparison
 
 The bot supports both pipelines so students can compare directly:
 
 ```python
 # Rule-based pipeline
-bot.fetch_data("BTC", use_cache=True) \
+bot.fetch_data("BTC") \
    .compute_features() \
    .detect_regime() \
    .select_strategy()
@@ -576,7 +492,7 @@ All tunable parameters live in `src/atc_trading_bot/config.py`. Modify this sing
 
 ## Architecture
 
-OOP design with 15 mixins — each responsibility is encapsulated and testable independently:
+OOP design with 11 mixins — each responsibility is encapsulated and testable independently:
 
 ```python
 class Bot(
@@ -585,19 +501,15 @@ class Bot(
     OptimizationMixin,    # Optuna + walk-forward
     ModelMixin,           # LightGBM, CatBoost, XGBoost, ensembles
     LabelingMixin,        # Triple-barrier labeling
-    # Trading Layer
-    TradingMixin,         # Paper trading execution
-    ScannerMixin,         # Multi-symbol regime scan
-    SentimentMixin,       # Fear & Greed Index
+    # Analysis Layer
     VisualizationMixin,   # Interactive Plotly charts
-    PersistenceMixin,     # Save/load models
     # Core Pipeline
     SignalMixin,          # Signal generation + confidence
     BacktestMixin,        # Backtesting + CPCV + overfitting
     StrategyMixin,        # Strategy selection + registry
     RegimeMixin,          # HMM regime detection
     FeatureMixin,         # TA indicators + PCA
-    DataMixin,            # CCXT fetch + CSV cache
+    DataMixin,            # CCXT fetch + pagination
 ):
 ```
 
@@ -611,7 +523,7 @@ atc-trading-bot/
 │   ├── config.py                           # All tunable parameters
 │   ├── pipeline_warning.py                 # Custom warning class
 │   ├── mixins/
-│   │   ├── data_mixin.py                   # CCXT fetch + pagination + CSV cache
+│   │   ├── data_mixin.py                   # CCXT fetch + pagination
 │   │   ├── feature_mixin.py                # TA indicators + PCA
 │   │   ├── regime_mixin.py                 # HMM regime detection
 │   │   ├── strategy_mixin.py               # Strategy registry + selection
@@ -621,11 +533,7 @@ atc-trading-bot/
 │   │   ├── model_mixin.py                  # LightGBM + CatBoost + XGBoost + ensembles
 │   │   ├── optimization_mixin.py           # Optuna + walk-forward
 │   │   ├── explainability_mixin.py         # SHAP + permutation importance
-│   │   ├── visualization_mixin.py          # Plotly charts (4 types)
-│   │   ├── persistence_mixin.py            # Save/load with joblib
-│   │   ├── scanner_mixin.py                # Multi-symbol regime scan
-│   │   ├── sentiment_mixin.py              # Fear & Greed Index
-│   │   └── trading_mixin.py                # Paper trading execution
+│   │   └── visualization_mixin.py          # Plotly charts (4 types)
 │   └── strategies/
 │       ├── bull_strategy.py                # SMA crossover (trend following)
 │       ├── bear_strategy.py                # RSI + SMA (defensive)
@@ -633,7 +541,7 @@ atc-trading-bot/
 │       ├── momentum_strategy.py            # ROC + RSI (momentum)
 │       ├── breakout_strategy.py            # Donchian + volume (breakout)
 │       └── volatility_strategy.py          # ATR mean reversion
-└── tests/                                  # 263 tests, 95% coverage
+└── tests/                                  # 210 tests, 95% coverage
     ├── conftest.py
     ├── test_bot.py
     ├── test_config.py
@@ -649,11 +557,7 @@ atc-trading-bot/
     ├── test_optimization_mixin.py
     ├── test_explainability_mixin.py
     ├── test_visualization_mixin.py
-    ├── test_persistence_mixin.py
-    ├── test_scanner_mixin.py
-    ├── test_sentiment_mixin.py
-    ├── test_leverage.py
-    └── test_trading_mixin.py
+    └── test_leverage.py
 ```
 
 ## API Reference
@@ -661,7 +565,7 @@ atc-trading-bot/
 ### Constructor
 
 ```python
-Bot(exchange_id="binanceus", symbols=[], timeframe="1d", api_key="", secret="", data_dir=None)
+Bot(exchange_id="binanceus", symbols=[], timeframe="1d", api_key="", secret="")
 ```
 
 | Parameter | Type | Default | Description |
@@ -671,7 +575,6 @@ Bot(exchange_id="binanceus", symbols=[], timeframe="1d", api_key="", secret="", 
 | `timeframe` | `str` | `"1d"` | Candlestick timeframe (`"1m"`, `"5m"`, `"1h"`, `"1d"`, etc.) |
 | `api_key` | `str` | `""` | Exchange API key (optional — public endpoints work without) |
 | `secret` | `str` | `""` | Exchange API secret |
-| `data_dir` | `str \| None` | `None` | Directory for CSV cache. Defaults to `data/` in project root |
 
 ### Pipeline Methods
 
@@ -679,7 +582,7 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 
 | Method | Returns | Description |
 |---|---|---|
-| `fetch_data(symbol, timeframe, since, use_cache)` | `self` | Fetch OHLCV data with automatic pagination. `symbol` accepts short (`"BTC"`) or full (`"BTC/USDT"`) format. `since` is ISO 8601 (`"2024-01-01T00:00:00Z"`). |
+| `fetch_data(symbol, timeframe, since)` | `self` | Fetch OHLCV data with automatic pagination. `symbol` accepts short (`"BTC"`) or full (`"BTC/USDT"`) format. `since` is ISO 8601 (`"2024-01-01T00:00:00Z"`). |
 | `compute_features(n_components=10)` | `self` | Compute 80+ TA indicators, curate, standardize, and reduce with PCA |
 | `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train Gaussian HMM with sticky transitions and classify regimes |
 | `select_strategy()` | `self` | Pick the default strategy for the current regime from the registry |
@@ -702,9 +605,6 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 
 | Method | Returns | Description |
 |---|---|---|
-| `scan_regimes(n_components=10, n_regimes=3)` | `DataFrame` | Quick regime scan across all configured `symbols`. Returns columns: `symbol`, `regime`, `confidence`, `last_price`, `pct_change_24h` |
-| `fetch_sentiment(days=30)` | `DataFrame` | Fetch Crypto Fear & Greed Index. Returns columns: `date`, `value` (0-100), `classification` |
-| `merge_sentiment()` | `DataFrame` | Merge sentiment into `self.df` via `merge_asof` (backward-looking, no look-ahead bias). Adds `sentiment_value` and `sentiment_classification` columns |
 | `features_summary(top_n=5)` | `None` | Print PCA reduction summary — total features, variance explained, top contributing features per component |
 
 ### ML Methods
@@ -739,24 +639,6 @@ All charts use Plotly with the `plotly_dark` template.
 | `plot_cpcv_results()` | `Figure` | 2x2 grid comparing Sharpe, return, drawdown, and win rate across CPCV folds |
 | `plot_feature_importance(top_n=15)` | `Figure` | Horizontal bar chart of PCA-weighted feature loadings |
 
-### Persistence Methods
-
-| Method | Returns | Description |
-|---|---|---|
-| `save_model(path)` | `str` | Save trained pipeline state (HMM, PCA, scaler, regimes, metadata) to disk via joblib |
-| `load_model(path)` | `dict` | Load a saved model. Returns metadata dict (`saved_at`, `exchange_id`, `symbols`, `timeframe`). Restores `hmm_model`, `pca`, `scaler`, `current_regime`, `regimes`, `regime_metrics` |
-
-### Trading Methods
-
-Paper trading via exchange testnet. Uses a separate `testnet_exchange` connection to avoid interfering with the data-fetching `exchange`.
-
-| Method | Returns | Description |
-|---|---|---|
-| `connect_testnet(api_key, secret, exchange_id="binanceus")` | `self` | Connect to an exchange's testnet (sandbox mode) for paper trading |
-| `execute_signal(symbol="BTC/USDT", amount=0.001)` | `self` | Execute the current signal (`self.signals`) as a market order on the testnet |
-| `get_balance()` | `dict \| None` | Fetch testnet account balance |
-| `get_open_positions()` | `list \| None` | List open positions on the testnet |
-
 ### Instance Attributes
 
 Set by the pipeline as each step executes. All start as `None` until their corresponding method is called.
@@ -769,7 +651,6 @@ Set by the pipeline as each step executes. All start as `None` until their corre
 | `symbols` | `list[str]` | Normalized trading pairs (e.g. `["BTC/USDT", "ETH/USDT"]`) |
 | `timeframe` | `str` | Candlestick timeframe (e.g. `"1d"`) |
 | `exchange` | `ccxt.Exchange` | CCXT exchange instance used for fetching market data |
-| `data_dir` | `str` | Directory path for CSV cache files |
 | `df` | `DataFrame \| None` | OHLCV DataFrame with columns `Open`, `High`, `Low`, `Close`, `Volume` and a `DatetimeIndex` |
 
 #### Features (set by `FeatureMixin` via `compute_features()`)
@@ -830,19 +711,6 @@ Set by the pipeline as each step executes. All start as `None` until their corre
 |---|---|---|
 | `optuna_study` | `Study \| None` | Optuna study object with full trial history. Set by `optimize_model()` |
 
-#### Sentiment (set by `SentimentMixin`)
-
-| Attribute | Type | Description |
-|---|---|---|
-| `sentiment_df` | `DataFrame \| None` | Fear & Greed data with columns `date`, `value` (0-100), `classification`. Set by `fetch_sentiment()` |
-
-#### Trading (set by `TradingMixin`)
-
-| Attribute | Type | Description |
-|---|---|---|
-| `testnet_exchange` | `ccxt.Exchange \| None` | Separate CCXT exchange instance in sandbox mode for paper trading. Set by `connect_testnet()` |
-| `last_order` | `dict \| None` | The most recent order response from the testnet. Set by `execute_signal()` |
-
 ### Class Attributes
 
 | Attribute | Type | Description |
@@ -875,9 +743,8 @@ pytest tests/test_regime_mixin.py -v
 - **[XGBoost](https://xgboost.readthedocs.io)** — Gradient boosting (ensemble diversity)
 - **[Optuna](https://optuna.org)** — Bayesian hyperparameter optimization (TPE + pruning)
 - **[SHAP](https://shap.readthedocs.io)** — Model explainability (per-prediction and global)
-- **[joblib](https://joblib.readthedocs.io)** — Model serialization
 - **[Plotly](https://plotly.com/python/)** — Interactive charts (`plotly_dark` template)
-- **[pytest](https://pytest.org)** — Testing framework (263 tests, 95% coverage)
+- **[pytest](https://pytest.org)** — Testing framework (210 tests, 95% coverage)
 
 ## License
 
