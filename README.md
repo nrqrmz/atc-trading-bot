@@ -152,13 +152,18 @@ print(f"Active: {bot.active_strategy.__name__}")
 
 # Browse all registered strategies
 bot.strategies_summary()
-#          strategy                              description best_regimes    worst_regimes
-# 0    BullStrategy    Trend following with SMA crossovers         bull         sideways
-# 1    BearStrategy    Defensive short mean reversion...           bear             bull
-# 2  SidewaysStrategy  Bollinger Bands + RSI mean reversion    sideways       bull, bear
-# 3  MomentumStrategy  ROC + RSI momentum following              bull         sideways
-# ...
+```
 
+| strategy | description | best_regimes | worst_regimes |
+|---|---|---|---|
+| BullStrategy | Trend following with SMA crossovers | bull | sideways |
+| BearStrategy | Defensive short mean reversion on resistance | bear | bull |
+| SidewaysStrategy | Bollinger Bands + RSI mean reversion | sideways | bull, bear |
+| MomentumStrategy | ROC + RSI momentum following | bull | sideways |
+| BreakoutStrategy | Donchian channel breakout with volume confirmation | bull, bear | sideways |
+| VolatilityStrategy | ATR mean reversion for volatility cycles | sideways, bear | bull |
+
+```python
 # Filter by regime
 bot.strategies_summary(regime="bull")
 ```
@@ -313,11 +318,13 @@ The `ScannerMixin` provides a quick regime scan across all configured assets.
 bot = Bot(symbols=["BTC", "ETH", "SOL"])
 scan = bot.scan_regimes()
 print(scan)
-#   symbol   regime  confidence  last_price  pct_change_24h
-# 0  BTC/USDT   bull       0.87    94800.0           0.023
-# 1  ETH/USDT   sideways   0.65     3400.0          -0.008
-# 2  SOL/USDT   bear       0.72      185.0          -0.041
 ```
+
+| symbol | regime | confidence | last_price | pct_change_24h |
+|---|---|---|---|---|
+| BTC/USDT | bull | 0.87 | 94800.0 | 0.023 |
+| ETH/USDT | sideways | 0.65 | 3400.0 | -0.008 |
+| SOL/USDT | bear | 0.72 | 185.0 | -0.041 |
 
 ### 10. Sentiment Integration
 
@@ -327,10 +334,15 @@ The `SentimentMixin` fetches the Crypto Fear & Greed Index and merges it into fe
 # Fetch last 30 days of sentiment
 bot.fetch_sentiment(days=30)
 print(bot.sentiment_df.tail())
-#         date  value classification
-# 25  2024-12-23     72        Greed
-# 26  2024-12-24     68        Greed
-# ...
+```
+
+| date | value | classification |
+|---|---|---|
+| 2024-12-23 | 72 | Greed |
+| 2024-12-24 | 68 | Greed |
+| 2024-12-25 | 73 | Greed |
+
+```python
 
 # Merge into OHLCV DataFrame (backward-looking, no look-ahead bias)
 bot.merge_sentiment()

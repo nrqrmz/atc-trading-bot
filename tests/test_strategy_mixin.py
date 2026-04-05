@@ -109,7 +109,8 @@ class TestStrategiesSummary:
 
     def test_has_expected_columns(self):
         df = StrategyMixin.strategies_summary()
-        assert list(df.columns) == ["strategy", "description", "best_regimes", "worst_regimes"]
+        assert df.index.name == "strategy"
+        assert list(df.columns) == ["description", "best_regimes", "worst_regimes"]
 
     def test_includes_all_strategies(self):
         df = StrategyMixin.strategies_summary()
@@ -123,9 +124,9 @@ class TestStrategiesSummary:
     def test_filter_unknown_regime_returns_empty(self):
         df = StrategyMixin.strategies_summary(regime="unknown")
         assert len(df) == 0
-        assert list(df.columns) == ["strategy", "description", "best_regimes", "worst_regimes"]
+        assert list(df.columns) == ["description", "best_regimes", "worst_regimes"]
 
-    def test_strategy_names_are_strings(self):
+    def test_strategy_names_are_index(self):
         df = StrategyMixin.strategies_summary()
-        assert all(isinstance(name, str) for name in df["strategy"])
-        assert "BullStrategy" in df["strategy"].values
+        assert all(isinstance(name, str) for name in df.index)
+        assert "BullStrategy" in df.index

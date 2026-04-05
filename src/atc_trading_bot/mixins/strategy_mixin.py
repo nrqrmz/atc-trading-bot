@@ -151,4 +151,5 @@ class StrategyMixin:
             }
             for m in entries
         ]
-        return pd.DataFrame(rows, columns=["strategy", "description", "best_regimes", "worst_regimes"])
+        df = pd.DataFrame(rows, columns=["strategy", "description", "best_regimes", "worst_regimes"])
+        return df.set_index("strategy")
