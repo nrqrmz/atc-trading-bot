@@ -124,4 +124,4 @@ class TestBotIntegration:
         bot.select_strategy()
 
         cv_results = bot.cross_validate_cpcv(n_splits=3, n_components=5)
-        assert isinstance(cv_results, list)
+        assert isinstance(cv_results, pd.DataFrame)

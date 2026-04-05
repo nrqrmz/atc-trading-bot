@@ -106,23 +106,30 @@ class TestBacktestMixin:
         end = results.loc[results["metric"] == "backtest_end", "value"].iloc[0]
         assert start < end
 
-    def test_cpcv_returns_list_of_metrics(self, long_ohlcv_data):
+    def test_cpcv_returns_dataframe(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
         bot.select_strategy()
         cv_results = bot.cross_validate_cpcv(n_splits=3)
 
-        assert isinstance(cv_results, list)
-        assert len(cv_results) > 0
-        for result in cv_results:
-            assert "sharpe_ratio" in result
-            assert "fold" in result
+        assert isinstance(cv_results, pd.DataFrame)
+        assert cv_results.index.name == "fold"
+        assert "sharpe_ratio" in cv_results.columns
+        assert "total_return" in cv_results.columns
+        assert "num_trades" in cv_results.columns
+
+    def test_cpcv_has_mean_row(self, long_ohlcv_data):
+        bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
+        bot.select_strategy()
+        cv_results = bot.cross_validate_cpcv(n_splits=3)
+
+        assert "Mean" in cv_results.index
 
     def test_cpcv_stores_results(self, long_ohlcv_data):
         bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
         bot.select_strategy()
         bot.cross_validate_cpcv(n_splits=3)
 
-        assert bot.cv_results is not None
+        assert isinstance(bot.cv_results, pd.DataFrame)
 
 
 class TestOverfitDetection:

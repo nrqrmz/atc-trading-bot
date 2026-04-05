@@ -17,7 +17,7 @@ class VizBot(VisualizationMixin):
         self.df = kwargs.pop("df", None)
         self.results = kwargs.pop("results", None)
         self.signals = kwargs.pop("signals", None)
-        self.cv_results = kwargs.pop("cv_results", None)
+        self._cv_results_raw = kwargs.pop("cv_results", None)
         self.pca = kwargs.pop("pca", None)
         self.features = kwargs.pop("features", None)
 

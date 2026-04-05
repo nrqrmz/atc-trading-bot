@@ -139,8 +139,8 @@ class VisualizationMixin:
         Returns:
             plotly Figure, or None if no CPCV results.
         """
-        cv_results = getattr(self, "cv_results", None)
-        if not cv_results:
+        cv_raw = getattr(self, "_cv_results_raw", None)
+        if not cv_raw:
             warnings.warn("No CPCV results. Call cross_validate_cpcv first.", PipelineWarning)
             return
 
@@ -152,13 +152,13 @@ class VisualizationMixin:
             "Sharpe Ratio", "Total Return", "Max Drawdown", "Win Rate",
         ])
 
-        folds = [r.get("fold", i) for i, r in enumerate(cv_results)]
+        folds = [r.get("fold", i) for i, r in enumerate(cv_raw)]
 
         positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
         colors = ["#2ecc71", "#3498db", "#e74c3c", "#f1c40f"]
 
         for metric, (row, col), color in zip(metrics, positions, colors):
-            values = [r.get(metric, 0) for r in cv_results]
+            values = [r.get(metric, 0) for r in cv_raw]
             fig.add_trace(go.Bar(
                 x=[f"Fold {f}" for f in folds], y=values,
                 marker_color=color, name=metric,

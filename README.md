@@ -232,11 +232,19 @@ cv_results = bot.cross_validate_cpcv(
     purge_gap=5,       # bars removed near train/test boundary
     embargo_pct=0.01,  # additional gap after test set
 )
+print(cv_results)
+```
 
-for fold in cv_results:
-    print(f"Fold {fold['fold']}: Sharpe={fold['sharpe_ratio']:.2f}, "
-          f"MaxDD={fold['max_drawdown']:.2%}")
+| fold | sharpe_ratio | sortino_ratio | max_drawdown | win_rate | profit_factor | total_return | num_trades |
+|---|---|---|---|---|---|---|---|
+| Fold 0 | 1.20 | 1.50 | -0.05 | 0.60 | 1.80 | 0.10 | 12 |
+| Fold 1 | 0.80 | 1.10 | -0.08 | 0.55 | 1.40 | 0.05 | 8 |
+| Fold 2 | 1.50 | 1.90 | -0.03 | 0.65 | 2.10 | 0.12 | 15 |
+| Fold 3 | 0.95 | 1.30 | -0.06 | 0.58 | 1.60 | 0.07 | 10 |
+| Fold 4 | 1.10 | 1.40 | -0.04 | 0.62 | 1.75 | 0.09 | 11 |
+| Mean | 1.11 | 1.44 | -0.05 | 0.60 | 1.73 | 0.09 | 11.2 |
 
+```python
 # Visualize fold comparison
 fig = bot.plot_cpcv_results()
 fig.show()
@@ -490,7 +498,7 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 | `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train Gaussian HMM with sticky transitions and classify regimes |
 | `select_strategy()` | `self` | Pick the default strategy for the current regime from the registry |
 | `backtest(strategy, cash, commission, test_ratio, n_components, n_regimes, leverage, stop_loss, take_profit, position_size)` | `DataFrame` | Out-of-sample backtest with train/test split, risk management, and overfitting detection |
-| `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `list[dict]` | Combinatorial Purged Cross-Validation with embargo |
+| `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `DataFrame` | CPCV with per-fold metrics and Mean summary row. Index: `Fold 0`, `Fold 1`, ..., `Mean` |
 | `generate_signals(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals with HMM confidence filtering |
 | `run_pipeline(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute full pipeline end-to-end (fetch → features → regime → strategy → backtest → signals) |
 
@@ -588,7 +596,7 @@ Set by the pipeline as each step executes. All start as `None` until their corre
 | Attribute | Type | Description |
 |---|---|---|
 | `results` | `DataFrame \| None` | Backtest results with columns `metric`, `value`, `description`. Set by `backtest()` |
-| `cv_results` | `list[dict] \| None` | List of metric dicts per CPCV fold. Each dict has `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `calmar_ratio`, `win_rate`, `profit_factor`, `total_return`, `buy_and_hold_return`, `num_trades`, `fold`. Set by `cross_validate_cpcv()` |
+| `cv_results` | `DataFrame \| None` | CPCV results with one row per fold plus a Mean summary row. Columns: `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `win_rate`, `profit_factor`, `total_return`, `num_trades`. Index: fold labels. Set by `cross_validate_cpcv()` |
 
 #### Signals (set by `SignalMixin` via `generate_signals()`)
 

@@ -159,13 +159,17 @@ class BacktestMixin:
                             n_components: int = DEFAULT_N_COMPONENTS,
                             n_regimes: int = DEFAULT_N_REGIMES,
                             cash: float = DEFAULT_CASH,
-                            commission: float = DEFAULT_COMMISSION) -> list[dict]:
+                            commission: float = DEFAULT_COMMISSION) -> pd.DataFrame:
         """Combinatorial Purged Cross-Validation.
 
         Generates all C(n_splits, 2) train/test combinations where each
         combination uses 1 group as test and the rest as training.
         Purging removes observations near the train/test boundary.
         Embargo adds an additional gap after each test set.
+
+        Returns:
+            DataFrame with one row per fold plus a Mean summary row.
+            Index is fold label (Fold 0, Fold 1, ..., Mean).
         """
         if not self._require_data():
             return
@@ -234,6 +238,27 @@ class BacktestMixin:
             except Exception:
                 continue
 
+        # Keep raw list for visualization mixin
+        self._cv_results_raw = list(self.cv_results)
+
+        # Build DataFrame with fold as index
+        cv_cols = ["sharpe_ratio", "sortino_ratio", "max_drawdown",
+                   "win_rate", "profit_factor", "total_return", "num_trades"]
+        rows = []
+        for r in self.cv_results:
+            rows.append({col: r.get(col, 0) for col in cv_cols})
+
+        df = pd.DataFrame(rows, columns=cv_cols)
+        df.index = [f"Fold {r.get('fold', i)}" for i, r in enumerate(self.cv_results)]
+        df.index.name = "fold"
+
+        # Append mean summary row
+        mean_row = df.mean()
+        mean_row.name = "Mean"
+        df = pd.concat([df, mean_row.to_frame().T])
+        df.index.name = "fold"
+
+        self.cv_results = df
         return self.cv_results
 
     @staticmethod
