@@ -71,7 +71,7 @@ MIN_TEST_BARS = 30
 # ---------------------------------------------------------------------------
 DEFAULT_STOP_LOSS = 0.05       # 5% stop-loss
 DEFAULT_TAKE_PROFIT = 0.10     # 10% take-profit
-DEFAULT_POSITION_SIZE = 0.95   # 95% of equity per trade (backtesting.py fraction)
+DEFAULT_POSITION_SIZE = 0.05   # 5% of equity per trade (risk management rule)
 
 # ---------------------------------------------------------------------------
 # Overfitting Detection

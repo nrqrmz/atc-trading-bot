@@ -187,7 +187,7 @@ All strategies include stop-loss, take-profit, and position sizing:
 # Defaults from config.py — override per strategy
 BullStrategy.stop_loss = 0.05       # 5% SL
 BullStrategy.take_profit = 0.10     # 10% TP
-BullStrategy.position_size = 0.95   # 95% of equity
+BullStrategy.position_size = 0.05   # 5% of equity
 ```
 
 ### 5. Backtesting
@@ -385,7 +385,7 @@ All tunable parameters live in `src/atc_trading_bot/config.py`. Modify this sing
 | `DEFAULT_LEVERAGE` | `1` | Leverage multiplier |
 | `DEFAULT_STOP_LOSS` | `0.05` | 5% stop-loss |
 | `DEFAULT_TAKE_PROFIT` | `0.10` | 10% take-profit |
-| `DEFAULT_POSITION_SIZE` | `0.95` | 95% of equity per trade |
+| `DEFAULT_POSITION_SIZE` | `0.05` | 5% of equity per trade |
 | `OVERFIT_THRESHOLD` | `0.5` | Warn if test < 50% of train |
 | `DEFAULT_CONFIDENCE_THRESHOLD` | `0.6` | Min regime confidence to trade |
 | `SIGNAL_LOOKBACK` | `100` | Bars for signal generation |
