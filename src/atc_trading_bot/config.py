@@ -87,6 +87,35 @@ SIGNAL_LOOKBACK = 100
 DEFAULT_CONFIDENCE_THRESHOLD = 0.6
 
 # ---------------------------------------------------------------------------
+# Triple-Barrier Labeling
+# ---------------------------------------------------------------------------
+DEFAULT_TP_FACTOR = 2.0    # Take-profit barrier = TP_FACTOR * ATR
+DEFAULT_SL_FACTOR = 2.0    # Stop-loss barrier = SL_FACTOR * ATR
+DEFAULT_MAX_HOLDING = 10   # Vertical barrier (bars until timeout → hold)
+DEFAULT_ATR_PERIOD = 14    # ATR period for barrier calibration
+
+# ---------------------------------------------------------------------------
+# ML Models
+# ---------------------------------------------------------------------------
+DEFAULT_ML_TEST_SIZE = 0.2         # Train/test split for ML
+DEFAULT_ML_CV_SPLITS = 5           # TimeSeriesSplit folds
+ML_OVERFIT_THRESHOLD = 0.7         # Warn if OOS < 70% of CV metric
+DEFAULT_N_ESTIMATORS = 200         # Trees per GBM
+DEFAULT_LEARNING_RATE = 0.05       # GBM learning rate
+DEFAULT_MAX_DEPTH = 6              # GBM max tree depth
+
+# ---------------------------------------------------------------------------
+# Optuna Hyperparameter Optimization
+# ---------------------------------------------------------------------------
+DEFAULT_OPTUNA_TRIALS = 100        # Number of Bayesian optimization trials
+
+# ---------------------------------------------------------------------------
+# Walk-Forward Validation
+# ---------------------------------------------------------------------------
+DEFAULT_WF_WINDOW_SIZE = 252       # Training window (bars) — ~1 year daily
+DEFAULT_WF_STEP_SIZE = 21          # Step forward (bars) — ~1 month daily
+
+# ---------------------------------------------------------------------------
 # Metric Descriptions (used in backtest result DataFrames)
 # ---------------------------------------------------------------------------
 METRIC_DESCRIPTIONS = {
