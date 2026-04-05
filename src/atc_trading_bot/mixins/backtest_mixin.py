@@ -11,7 +11,10 @@ from atc_trading_bot.config import (
     DEFAULT_LEVERAGE,
     DEFAULT_N_COMPONENTS,
     DEFAULT_N_REGIMES,
+    DEFAULT_POSITION_SIZE,
     DEFAULT_PURGE_GAP,
+    DEFAULT_STOP_LOSS,
+    DEFAULT_TAKE_PROFIT,
     DEFAULT_TEST_RATIO,
     EXCLUDE_COLS,
     METRIC_DESCRIPTIONS,
@@ -53,11 +56,28 @@ class BacktestMixin:
         self.results: pd.DataFrame | None = None
         self.cv_results: list[dict] | None = None
 
+    @staticmethod
+    def _apply_risk_params(strategy_cls: type[Strategy], stop_loss: float,
+                           take_profit: float, position_size: float) -> type[Strategy]:
+        """Create a strategy subclass with the given risk parameters.
+
+        Uses dynamic subclassing so the original class is never mutated.
+        This is the same pattern backtesting.py uses for bt.optimize().
+        """
+        return type(strategy_cls.__name__, (strategy_cls,), {
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "position_size": position_size,
+        })
+
     def backtest(self, strategy: type[Strategy] | None = None,
                  cash: float = DEFAULT_CASH, commission: float = DEFAULT_COMMISSION,
                  test_ratio: float = DEFAULT_TEST_RATIO, n_components: int | None = None,
                  n_regimes: int | None = None,
-                 leverage: int = DEFAULT_LEVERAGE) -> pd.DataFrame:
+                 leverage: int = DEFAULT_LEVERAGE,
+                 stop_loss: float = DEFAULT_STOP_LOSS,
+                 take_profit: float = DEFAULT_TAKE_PROFIT,
+                 position_size: float = DEFAULT_POSITION_SIZE) -> pd.DataFrame:
         """Run an out-of-sample backtest with train/test split.
 
         Splits data into train/test using test_ratio. When no explicit strategy
@@ -75,6 +95,9 @@ class BacktestMixin:
             leverage: Leverage multiplier. When > 1, sets margin=1/leverage
                 on the Backtest constructor (e.g. leverage=2 → margin=0.5).
                 Default: 1 (no leverage).
+            stop_loss: Stop-loss as a fraction (e.g. 0.05 = 5%). Default: 0.05.
+            take_profit: Take-profit as a fraction (e.g. 0.10 = 10%). Default: 0.10.
+            position_size: Fraction of equity per trade (e.g. 0.05 = 5%). Default: 0.05.
 
         Returns:
             DataFrame with columns (metric, value, description) including
@@ -100,6 +123,9 @@ class BacktestMixin:
                 train_df, n_components=n_components, n_regimes=n_regimes,
                 test_df=test_df,
             )
+
+        # Inject risk parameters into the strategy via dynamic subclass
+        strat = self._apply_risk_params(strat, stop_loss, take_profit, position_size)
 
         # Build extra kwargs for leverage (margin trading)
         bt_kwargs = {}

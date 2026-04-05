@@ -181,13 +181,18 @@ bot.strategies_summary(regime="bull")
 
 #### Risk Management
 
-All strategies include stop-loss, take-profit, and position sizing:
+All strategies include stop-loss, take-profit, and position sizing. Control them directly from `backtest()`:
 
 ```python
-# Defaults from config.py — override per strategy
-BullStrategy.stop_loss = 0.05       # 5% SL
-BullStrategy.take_profit = 0.10     # 10% TP
-BullStrategy.position_size = 0.05   # 5% of equity
+# Custom risk parameters per backtest
+results = bot.backtest(
+    stop_loss=0.03,       # 3% SL
+    take_profit=0.08,     # 8% TP
+    position_size=0.10,   # 10% of equity per trade
+)
+
+# Defaults from config.py: SL=5%, TP=10%, size=5%
+results = bot.backtest()
 ```
 
 ### 5. Backtesting
@@ -484,7 +489,7 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 | `compute_features(n_components=10)` | `self` | Compute 80+ TA indicators, curate, standardize, and reduce with PCA |
 | `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train Gaussian HMM with sticky transitions and classify regimes |
 | `select_strategy()` | `self` | Pick the default strategy for the current regime from the registry |
-| `backtest(strategy, cash, commission, test_ratio, n_components, n_regimes, leverage)` | `DataFrame` | Out-of-sample backtest with train/test split and automatic overfitting detection |
+| `backtest(strategy, cash, commission, test_ratio, n_components, n_regimes, leverage, stop_loss, take_profit, position_size)` | `DataFrame` | Out-of-sample backtest with train/test split, risk management, and overfitting detection |
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `list[dict]` | Combinatorial Purged Cross-Validation with embargo |
 | `generate_signals(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals with HMM confidence filtering |
 | `run_pipeline(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute full pipeline end-to-end (fetch → features → regime → strategy → backtest → signals) |

@@ -176,3 +176,34 @@ class TestOverfitDetection:
 
         # Should run without error; overfitting check happens internally
         assert isinstance(results, pd.DataFrame)
+
+
+class TestRiskParams:
+    def test_backtest_with_custom_risk_params(self, long_ohlcv_data):
+        bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
+        bot.select_strategy()
+        results = bot.backtest(stop_loss=0.03, take_profit=0.08, position_size=0.10)
+
+        assert isinstance(results, pd.DataFrame)
+        assert "sharpe_ratio" in results["metric"].values
+
+    def test_risk_params_dont_mutate_original_strategy(self, long_ohlcv_data):
+        bot = BacktestBot(df=long_ohlcv_data, current_regime="bull")
+        bot.select_strategy()
+        original_sl = bot.active_strategy.stop_loss
+
+        bot.backtest(stop_loss=0.99)
+
+        assert bot.active_strategy.stop_loss == original_sl
+
+    def test_apply_risk_params_creates_subclass(self):
+        from atc_trading_bot.strategies.bull_strategy import BullStrategy
+
+        modified = BacktestMixin._apply_risk_params(BullStrategy, 0.03, 0.08, 0.10)
+
+        assert modified.stop_loss == 0.03
+        assert modified.take_profit == 0.08
+        assert modified.position_size == 0.10
+        assert issubclass(modified, BullStrategy)
+        # Original unchanged
+        assert BullStrategy.stop_loss != 0.03
