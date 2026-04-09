@@ -97,25 +97,37 @@ class FeatureMixin:
         self.features_pca = self.pca.fit_transform(self.features_scaled)
         return self
 
-    def features_summary(self, top_n: int = 5) -> None:
-        """Print a summary of computed features and PCA reduction.
+    def features_summary(self, top_n: int = 5) -> pd.DataFrame | None:
+        """Return a summary of PCA reduction as a DataFrame.
+
+        Each row represents a principal component with its explained variance
+        and the top contributing features (by absolute loading weight).
 
         Args:
-            top_n: Number of top features to show per PCA component. Default: 5.
+            top_n: Number of top features to show per component. Default: 5.
+
+        Returns:
+            DataFrame indexed by component name (``PC1``, ``PC2``, ...)
+            with columns ``variance_pct``, ``cumulative_pct``, ``top_features``.
         """
         if not self._require_features():
             return
 
-        total = self.features.shape[1]
-        n_components = self.pca.n_components_
         explained = self.pca.explained_variance_ratio_
-        total_var = explained.sum() * 100
+        cumulative = np.cumsum(explained)
 
-        print(f"Total features: {total}")
-        print(f"PCA components: {n_components} ({total_var:.1f}% variance explained)\n")
-
+        rows = []
         for i, ratio in enumerate(explained):
             weights = np.abs(self.pca.components_[i])
             top_idx = weights.argsort()[::-1][:top_n]
             top_names = [self.features.columns[j] for j in top_idx]
-            print(f"  PC{i+1} ({ratio*100:.1f}%): {', '.join(top_names)}")
+            rows.append({
+                "variance_pct": round(ratio * 100, 1),
+                "cumulative_pct": round(cumulative[i] * 100, 1),
+                "top_features": ", ".join(top_names),
+            })
+
+        df = pd.DataFrame(rows)
+        df.index = [f"PC{i+1}" for i in range(len(rows))]
+        df.index.name = "component"
+        return df

@@ -69,16 +69,26 @@ class TestFeatureMixin:
             result = bot.compute_features()
         assert result is None
 
-    def test_features_summary_prints_output(self, sample_ohlcv_data, capsys):
+    def test_features_summary_returns_dataframe(self, sample_ohlcv_data):
         bot = FeatureBot(df=sample_ohlcv_data)
         bot.compute_features()
-        bot.features_summary()
+        summary = bot.features_summary()
 
-        output = capsys.readouterr().out
-        assert "Total features:" in output
-        assert "PCA components:" in output
-        assert "variance explained" in output
-        assert "PC1" in output
+        assert isinstance(summary, pd.DataFrame)
+        assert summary.index.name == "component"
+        assert "PC1" in summary.index
+        assert "variance_pct" in summary.columns
+        assert "cumulative_pct" in summary.columns
+        assert "top_features" in summary.columns
+
+    def test_features_summary_variance_is_cumulative(self, sample_ohlcv_data):
+        bot = FeatureBot(df=sample_ohlcv_data)
+        bot.compute_features()
+        summary = bot.features_summary()
+
+        cumulative = summary["cumulative_pct"].values
+        assert all(cumulative[i] <= cumulative[i + 1] for i in range(len(cumulative) - 1))
+        assert cumulative[-1] <= 100.0
 
     def test_features_summary_warns_without_features(self):
         bot = FeatureBot()
