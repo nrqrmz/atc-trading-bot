@@ -1,3 +1,5 @@
+import pandas as pd
+
 from atc_trading_bot.config import DEFAULT_N_COMPONENTS, DEFAULT_N_REGIMES
 from atc_trading_bot.mixins.backtest_mixin import BacktestMixin
 from atc_trading_bot.mixins.data_mixin import DataMixin
@@ -30,6 +32,12 @@ class Bot(
         api_key: Exchange API key. Default: "" (public endpoints only).
         secret: Exchange API secret. Default: "".
     """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        pd.set_option("display.max_colwidth", None)
+        pd.set_option("display.width", None)
+        pd.set_option("display.max_columns", None)
 
     def run_pipeline(self, symbol: str = "BTC",
                      n_components: int = DEFAULT_N_COMPONENTS,
