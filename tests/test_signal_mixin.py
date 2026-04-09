@@ -173,3 +173,124 @@ class TestConfidenceThresholding:
         assert "confidence" in signals
         assert isinstance(signals["confidence"], float)
         assert 0 <= signals["confidence"] <= 1
+
+
+class SignalMLBot(SignalMixin):
+    """Minimal class using SignalMixin for ML signal testing."""
+
+    def __init__(self, **kwargs):
+        self.df = kwargs.pop("df", None)
+        self.current_regime = kwargs.pop("current_regime", None)
+        self.active_model = kwargs.pop("active_model", None)
+        self.features_pca = kwargs.pop("features_pca", None)
+        self._label_unmap = kwargs.pop("_label_unmap", {0: -1, 1: 0, 2: 1})
+        super().__init__(**kwargs)
+
+
+class TestSignalML:
+    def test_generate_signals_ml_returns_dict(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([2])  # mapped "buy"
+        mock_model.predict_proba.return_value = np.array([[0.1, 0.1, 0.8]])
+
+        n_obs = len(trending_data)
+        features_pca = np.random.randn(n_obs, 5)
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model, features_pca=features_pca,
+        )
+        signals = bot.generate_signals_ml()
+
+        assert isinstance(signals, dict)
+        assert "regime" in signals
+        assert "model" in signals
+        assert "signal" in signals
+        assert "confidence" in signals
+
+    def test_signal_is_valid_ml(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([2])
+        mock_model.predict_proba.return_value = np.array([[0.1, 0.1, 0.8]])
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model, features_pca=np.random.randn(len(trending_data), 5),
+        )
+        signals = bot.generate_signals_ml()
+
+        assert signals["signal"] in ("buy", "sell", "hold")
+
+    def test_confidence_from_predict_proba(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([2])
+        mock_model.predict_proba.return_value = np.array([[0.05, 0.15, 0.80]])
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model, features_pca=np.random.randn(len(trending_data), 5),
+        )
+        signals = bot.generate_signals_ml()
+
+        assert signals["confidence"] == 0.8
+
+    def test_low_confidence_overrides_to_hold_ml(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([2])
+        mock_model.predict_proba.return_value = np.array([[0.35, 0.33, 0.32]])
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model, features_pca=np.random.randn(len(trending_data), 5),
+        )
+        signals = bot.generate_signals_ml(confidence_threshold=0.6)
+
+        assert signals["signal"] == "hold"
+        assert signals["confidence"] == 0.35
+
+    def test_warns_without_model(self, trending_data):
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            features_pca=np.random.randn(len(trending_data), 5),
+        )
+        with pytest.warns(PipelineWarning, match="train_models"):
+            result = bot.generate_signals_ml()
+        assert result is None
+
+    def test_warns_without_features(self, trending_data):
+        mock_model = MagicMock()
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model,
+        )
+        with pytest.warns(PipelineWarning, match="compute_features"):
+            result = bot.generate_signals_ml()
+        assert result is None
+
+    def test_fallback_when_no_predict_proba(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([2])
+        mock_model.predict_proba.side_effect = AttributeError
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="bull",
+            active_model=mock_model, features_pca=np.random.randn(len(trending_data), 5),
+        )
+        signals = bot.generate_signals_ml(confidence_threshold=0)
+
+        assert signals["confidence"] == 1.0
+        assert signals["signal"] == "buy"
+
+    def test_ml_signals_stored(self, trending_data):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([0])
+        mock_model.predict_proba.return_value = np.array([[0.1, 0.8, 0.1]])
+
+        bot = SignalMLBot(
+            df=trending_data, current_regime="sideways",
+            active_model=mock_model, features_pca=np.random.randn(len(trending_data), 5),
+        )
+        bot.generate_signals_ml()
+
+        assert bot.ml_signals is not None
+        assert bot.ml_signals["regime"] == "sideways"

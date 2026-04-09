@@ -19,6 +19,7 @@ from atc_trading_bot.config import (
     DEFAULT_ML_CV_SPLITS,
     DEFAULT_ML_TEST_SIZE,
     DEFAULT_N_ESTIMATORS,
+    DEFAULT_OPTUNA_TRIALS,
     ML_OVERFIT_THRESHOLD,
 )
 from atc_trading_bot.pipeline_warning import PipelineWarning
@@ -230,3 +231,86 @@ class ModelMixin:
             "precision": float(precision_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)),
             "recall": float(recall_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)),
         }
+
+    def train_optimized(self, n_trials: int = DEFAULT_OPTUNA_TRIALS,
+                        model: str = "lightgbm",
+                        test_size: float = DEFAULT_ML_TEST_SIZE,
+                        cv_splits: int = DEFAULT_ML_CV_SPLITS):
+        """Optimize hyperparameters then retrain with the best params.
+
+        Chains :meth:`optimize_model` → retrain with best params → evaluate.
+        Updates ``active_model`` only if the optimized model beats the current
+        one on out-of-sample F1 score.
+
+        Args:
+            n_trials: Number of Optuna trials. Default: 100.
+            model: Model type (``"lightgbm"``, ``"catboost"``, ``"xgboost"``).
+                Default: ``"lightgbm"``.
+            test_size: Fraction for OOS evaluation. Default: 0.2.
+            cv_splits: TimeSeriesSplit folds. Default: 5.
+
+        Returns:
+            self for method chaining.
+        """
+        if not self._require_features():
+            return
+        if not self._require_labels():
+            return
+
+        # Ensure label mapping exists (may not if train_models was never called)
+        if not hasattr(self, "_label_map"):
+            self._label_map = {-1: 0, 0: 1, 1: 2}
+            self._label_unmap = {v: k for k, v in self._label_map.items()}
+
+        # Step 1: Optimize
+        self.optimize_model(n_trials=n_trials, model=model, cv_splits=cv_splits)
+        if self.optuna_study is None:
+            warnings.warn("Optimization failed. Keeping current model.", PipelineWarning)
+            return self
+
+        best_params = self.optuna_study.best_params
+
+        # Step 2: Retrain with optimized params
+        features_index = getattr(self, "features_index", None)
+        if features_index is not None:
+            valid_labels = self.labels.loc[features_index].values
+        else:
+            valid_labels = self.labels.values[:len(self.features_pca)]
+
+        X = self.features_pca
+        y = np.array([self._label_map.get(v, 1) for v in valid_labels])
+
+        split_idx = int(len(X) * (1 - test_size))
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+
+        clf = self._create_model(model, best_params)
+        clf.fit(X_train, y_train)
+
+        # Step 3: Evaluate and compare
+        y_pred = clf.predict(X_test)
+        metrics = self._compute_classification_metrics(y_test, y_pred)
+
+        current_f1 = 0.0
+        if self.active_model is not None:
+            try:
+                current_pred = self.active_model.predict(X_test)
+                current_metrics = self._compute_classification_metrics(y_test, current_pred)
+                current_f1 = current_metrics["f1"]
+            except Exception:
+                pass
+
+        if metrics["f1"] >= current_f1:
+            self.active_model = clf
+            if self.trained_models is None:
+                self.trained_models = {}
+            model_name = f"{model.capitalize()}_optimized"
+            self.trained_models[model_name] = clf
+        else:
+            warnings.warn(
+                f"Optimized {model} (F1={metrics['f1']:.3f}) did not beat "
+                f"current model (F1={current_f1:.3f}). Keeping current model.",
+                PipelineWarning,
+            )
+
+        return self

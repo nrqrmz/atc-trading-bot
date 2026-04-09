@@ -4,18 +4,25 @@ import warnings
 import numpy as np
 from atc_trading_bot.config import (
     CORRELATION_THRESHOLD,
+    DEFAULT_ATR_PERIOD,
     DEFAULT_CASH,
     DEFAULT_COMMISSION,
     DEFAULT_CPCV_SPLITS,
     DEFAULT_EMBARGO_PCT,
+    DEFAULT_LEARNING_RATE,
     DEFAULT_LEVERAGE,
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_HOLDING,
     DEFAULT_N_COMPONENTS,
+    DEFAULT_N_ESTIMATORS,
     DEFAULT_N_REGIMES,
     DEFAULT_POSITION_SIZE,
     DEFAULT_PURGE_GAP,
+    DEFAULT_SL_FACTOR,
     DEFAULT_STOP_LOSS,
     DEFAULT_TAKE_PROFIT,
     DEFAULT_TEST_RATIO,
+    DEFAULT_TP_FACTOR,
     EXCLUDE_COLS,
     METRIC_DESCRIPTIONS,
     MIN_TEST_BARS,
@@ -54,6 +61,7 @@ class BacktestMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.results: pd.DataFrame | None = None
+        self.ml_results: pd.DataFrame | None = None
         self.cv_results: list[dict] | None = None
 
     @staticmethod
@@ -152,6 +160,238 @@ class BacktestMixin:
             end_date=test_df.index[-1],
         )
         return self.results
+
+    def backtest_ml(self, cash: float = DEFAULT_CASH,
+                    commission: float = DEFAULT_COMMISSION,
+                    test_ratio: float = DEFAULT_TEST_RATIO,
+                    n_components: int | None = None,
+                    model: str = "lightgbm",
+                    leverage: int = DEFAULT_LEVERAGE,
+                    stop_loss: float = DEFAULT_STOP_LOSS,
+                    take_profit: float = DEFAULT_TAKE_PROFIT,
+                    position_size: float = DEFAULT_POSITION_SIZE) -> pd.DataFrame:
+        """Run an out-of-sample backtest using ML predictions.
+
+        Splits data into train/test. On the training set, refits the entire
+        ML pipeline (features → PCA → triple-barrier labels → model) to avoid
+        look-ahead bias. Predicts on the test set and backtests through
+        :class:`~atc_trading_bot.strategies.ml_strategy.MLStrategy`.
+
+        Args:
+            cash: Starting capital. Default: 100,000.
+            commission: Commission fraction. Default: 0.001.
+            test_ratio: Fraction of data for test set. Default: 0.3.
+            n_components: PCA components. Defaults to fitted value.
+            model: ML model type (``"lightgbm"``, ``"catboost"``, ``"xgboost"``).
+                Default: ``"lightgbm"``.
+            leverage: Leverage multiplier. Default: 1.
+            stop_loss: Stop-loss fraction. Default: 0.05.
+            take_profit: Take-profit fraction. Default: 0.10.
+            position_size: Equity fraction per trade. Default: 0.05.
+
+        Returns:
+            DataFrame with columns (metric, value, description), same format
+            as :meth:`backtest`. Returns None if prerequisites are missing.
+        """
+        if not self._require_data():
+            return
+
+        if n_components is None:
+            n_components = (
+                getattr(self.pca, "n_components_", DEFAULT_N_COMPONENTS)
+                if hasattr(self, "pca") and self.pca is not None
+                else DEFAULT_N_COMPONENTS
+            )
+
+        train_df, test_df = train_test_split(self.df, test_size=test_ratio, shuffle=False)
+
+        predictions = self._fit_and_predict_ml(train_df, test_df, n_components, model)
+        if predictions is None:
+            return
+
+        from atc_trading_bot.strategies.ml_strategy import MLStrategy
+
+        # Inject predictions via dynamic subclass (same pattern as _apply_risk_params)
+        strat = type("MLStrategy", (MLStrategy,), {"predictions": predictions})
+        strat = self._apply_risk_params(strat, stop_loss, take_profit, position_size)
+
+        bt_kwargs = {}
+        if leverage > 1:
+            bt_kwargs["margin"] = 1 / leverage
+
+        # Out-of-sample backtest
+        bt = Backtest(test_df, strat, cash=cash, commission=commission,
+                      finalize_trades=True, **bt_kwargs)
+        stats = bt.run()
+        metrics_dict = self._extract_metrics(stats, test_df=test_df)
+
+        # In-sample backtest for overfitting comparison
+        try:
+            train_preds = self._fit_and_predict_ml(
+                train_df, train_df, n_components, model,
+            )
+            if train_preds is not None:
+                train_strat = type("MLStrategy", (MLStrategy,), {"predictions": train_preds})
+                train_strat = self._apply_risk_params(train_strat, stop_loss, take_profit, position_size)
+                bt_train = Backtest(train_df, train_strat, cash=cash, commission=commission,
+                                    finalize_trades=True, **bt_kwargs)
+                train_stats = bt_train.run()
+                train_metrics = self._extract_metrics(train_stats, test_df=train_df)
+                self._check_overfit(train_metrics, metrics_dict)
+        except Exception:
+            pass
+
+        self.ml_results = self._metrics_to_dataframe(
+            metrics_dict,
+            start_date=test_df.index[0],
+            end_date=test_df.index[-1],
+        )
+        return self.ml_results
+
+    def _fit_and_predict_ml(self, train_df: pd.DataFrame, test_df: pd.DataFrame,
+                            n_components: int, model: str = "lightgbm") -> np.ndarray | None:
+        """Fit features + PCA + labels + ML model on train, predict on test.
+
+        This is the ML equivalent of :meth:`_fit_and_select_strategy`.
+        Everything is re-derived from raw OHLCV on the training set to
+        prevent look-ahead bias.
+
+        Args:
+            train_df: Training OHLCV DataFrame.
+            test_df: Test OHLCV DataFrame.
+            n_components: Number of PCA components.
+            model: Model type for ``_create_model()``. Default: ``"lightgbm"``.
+
+        Returns:
+            Array of predictions aligned with ``len(test_df)``, values in
+            {-1, 0, 1}. Returns None if training fails.
+        """
+        # --- Compute TA features on training data ---
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
+            df_ta = ta_lib.add_all_ta_features(
+                train_df.copy(), open="Open", high="High", low="Low",
+                close="Close", volume="Volume", fillna=False,
+            )
+        feature_cols = [c for c in df_ta.columns if c not in EXCLUDE_COLS]
+        train_features = df_ta[feature_cols].copy()
+
+        # Clean: forward fill, replace inf, drop NaN
+        train_features.ffill(inplace=True)
+        train_features.replace([np.inf, -np.inf], np.nan, inplace=True)
+        thresh = int(len(train_features) * NAN_COLUMN_THRESHOLD)
+        train_features.dropna(axis=1, thresh=thresh, inplace=True)
+        train_features.dropna(inplace=True)
+
+        valid_index = train_features.index
+
+        # Remove constant and highly correlated features
+        non_const = train_features.columns[train_features.std() > 0]
+        train_features = train_features[non_const]
+
+        corr = train_features.corr().abs()
+        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        corr_drop = [col for col in upper.columns if any(upper[col] > CORRELATION_THRESHOLD)]
+        train_features = train_features.drop(columns=corr_drop)
+        kept_cols = train_features.columns
+
+        # --- Fit scaler + PCA ---
+        scaler = StandardScaler()
+        scaled = scaler.fit_transform(train_features)
+
+        actual_components = min(n_components, scaled.shape[1])
+        pca = PCA(n_components=actual_components)
+        train_pca = pca.fit_transform(scaled)
+
+        # --- Triple-barrier labeling on training data ---
+        close = train_df["Close"].values
+        high = train_df["High"].values
+        low = train_df["Low"].values
+
+        tr = np.maximum(
+            high[1:] - low[1:],
+            np.maximum(
+                np.abs(high[1:] - close[:-1]),
+                np.abs(low[1:] - close[:-1]),
+            ),
+        )
+        tr = np.concatenate([[high[0] - low[0]], tr])
+        atr = pd.Series(tr).rolling(DEFAULT_ATR_PERIOD).mean().values
+
+        n = len(close)
+        labels = np.zeros(n, dtype=int)
+        for i in range(n):
+            if np.isnan(atr[i]) or atr[i] == 0:
+                continue
+            upper_barrier = close[i] + DEFAULT_TP_FACTOR * atr[i]
+            lower_barrier = close[i] - DEFAULT_SL_FACTOR * atr[i]
+            end = min(i + DEFAULT_MAX_HOLDING, n)
+            for j in range(i + 1, end):
+                if close[j] >= upper_barrier:
+                    labels[i] = 1
+                    break
+                if close[j] <= lower_barrier:
+                    labels[i] = -1
+                    break
+
+        train_labels = pd.Series(labels, index=train_df.index, name="label")
+
+        # --- Align features and labels ---
+        common_idx = valid_index.intersection(train_labels.index)
+        aligned_labels = train_labels.loc[common_idx].values
+        # train_pca rows correspond to valid_index
+        idx_positions = [valid_index.get_loc(idx) for idx in common_idx]
+        aligned_pca = train_pca[idx_positions]
+
+        # Map labels to sequential ints starting from 0 for XGBoost compatibility.
+        # Dynamic mapping handles cases where not all 3 classes are present.
+        unique_labels = sorted(np.unique(aligned_labels))
+        label_map = {v: i for i, v in enumerate(unique_labels)}
+        label_unmap = {i: v for v, i in label_map.items()}
+        y = np.array([label_map[v] for v in aligned_labels])
+
+        if len(np.unique(y)) < 2:
+            warnings.warn(
+                "Training labels have fewer than 2 classes. Returning hold predictions.",
+                PipelineWarning,
+            )
+            return np.zeros(len(test_df), dtype=int)
+
+        # --- Train ML model ---
+        params = {
+            "n_estimators": DEFAULT_N_ESTIMATORS,
+            "learning_rate": DEFAULT_LEARNING_RATE,
+            "max_depth": DEFAULT_MAX_DEPTH,
+        }
+        clf = self._create_model(model, params)
+        clf.fit(aligned_pca, y)
+
+        # --- Transform test data through the same pipeline ---
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
+            df_ta_test = ta_lib.add_all_ta_features(
+                test_df.copy(), open="Open", high="High", low="Low",
+                close="Close", volume="Volume", fillna=False,
+            )
+        test_features = df_ta_test[kept_cols].copy()
+        test_features.ffill(inplace=True)
+        test_features.replace([np.inf, -np.inf], np.nan, inplace=True)
+        test_features.dropna(inplace=True)
+
+        test_scaled = scaler.transform(test_features)
+        test_pca = pca.transform(test_scaled)
+
+        # --- Predict and align ---
+        raw_preds = clf.predict(test_pca)
+        unmapped = np.array([label_unmap.get(int(v), 0) for v in raw_preds])
+
+        # Pad front with 0 (hold) if TA warmup reduced test rows
+        n_test = len(test_df)
+        if len(unmapped) < n_test:
+            pad = np.zeros(n_test - len(unmapped), dtype=int)
+            unmapped = np.concatenate([pad, unmapped])
+
+        return unmapped
 
     def cross_validate_cpcv(self, n_splits: int = DEFAULT_CPCV_SPLITS,
                             purge_gap: int = DEFAULT_PURGE_GAP,

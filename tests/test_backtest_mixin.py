@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.backtest_mixin import BacktestMixin
+from atc_trading_bot.mixins.optimization_mixin import OptimizationMixin
 from atc_trading_bot.pipeline_warning import PipelineWarning
 from atc_trading_bot.mixins.strategy_mixin import StrategyMixin
 from atc_trading_bot.strategies.bull_strategy import BullStrategy
@@ -15,6 +16,14 @@ class BacktestBot(BacktestMixin, StrategyMixin):
         self.df = kwargs.pop("df", None)
         self.current_regime = kwargs.pop("current_regime", None)
         self.features_pca = kwargs.pop("features_pca", None)
+        super().__init__(**kwargs)
+
+
+class BacktestMLBot(BacktestMixin, OptimizationMixin):
+    """Minimal class using BacktestMixin + OptimizationMixin for ML testing."""
+
+    def __init__(self, **kwargs):
+        self.df = kwargs.pop("df", None)
         super().__init__(**kwargs)
 
 
@@ -214,3 +223,47 @@ class TestRiskParams:
         assert issubclass(modified, BullStrategy)
         # Original unchanged
         assert BullStrategy.stop_loss != 0.03
+
+
+class TestBacktestML:
+    def test_backtest_ml_returns_metrics(self, long_ohlcv_data):
+        bot = BacktestMLBot(df=long_ohlcv_data)
+        results = bot.backtest_ml()
+
+        assert isinstance(results, pd.DataFrame)
+        assert list(results.columns) == ["metric", "value", "description"]
+        metrics = results["metric"].tolist()
+        for key in ["sharpe_ratio", "max_drawdown", "total_return", "num_trades"]:
+            assert key in metrics, f"Missing metric: {key}"
+
+    def test_backtest_ml_stores_ml_results(self, long_ohlcv_data):
+        bot = BacktestMLBot(df=long_ohlcv_data)
+        bot.backtest_ml()
+
+        assert bot.ml_results is not None
+
+    def test_backtest_ml_warns_without_data(self):
+        bot = BacktestMLBot()
+        with pytest.warns(PipelineWarning, match="fetch_data"):
+            result = bot.backtest_ml()
+        assert result is None
+
+    def test_backtest_ml_includes_date_range(self, long_ohlcv_data):
+        bot = BacktestMLBot(df=long_ohlcv_data)
+        results = bot.backtest_ml()
+
+        metrics = results["metric"].tolist()
+        assert "backtest_start" in metrics
+        assert "backtest_end" in metrics
+
+    def test_backtest_ml_with_custom_risk_params(self, long_ohlcv_data):
+        bot = BacktestMLBot(df=long_ohlcv_data)
+        results = bot.backtest_ml(stop_loss=0.03, take_profit=0.08, position_size=0.10)
+
+        assert isinstance(results, pd.DataFrame)
+
+    def test_backtest_ml_with_xgboost(self, long_ohlcv_data):
+        bot = BacktestMLBot(df=long_ohlcv_data)
+        results = bot.backtest_ml(model="xgboost")
+
+        assert isinstance(results, pd.DataFrame)

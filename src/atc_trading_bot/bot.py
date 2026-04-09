@@ -54,7 +54,11 @@ class Bot(
     def run_pipeline_ml(self, symbol: str = "BTC",
                         n_components: int = DEFAULT_N_COMPONENTS,
                         n_regimes: int = DEFAULT_N_REGIMES) -> dict:
-        """Execute the ML pipeline for a symbol and return predictions.
+        """Execute the ML pipeline for a symbol and return signals.
+
+        Full pipeline:
+        fetch_data → compute_features → detect_regime → compute_labels
+        → train_models → backtest_ml → generate_signals_ml
 
         Args:
             symbol: Trading pair, e.g. "BTC" or "BTC/USDT". Default: "BTC".
@@ -62,20 +66,12 @@ class Bot(
             n_regimes: Number of HMM regimes. Default: 3.
 
         Returns:
-            Dict with keys: regime, model, predictions summary.
+            Dict with keys: regime, model, signal, confidence.
         """
         self.fetch_data(symbol)
         self.compute_features(n_components=n_components)
         self.detect_regime(n_regimes=n_regimes)
         self.compute_labels()
         self.train_models()
-
-        preds = self.predict()
-        last_pred = int(preds[-1]) if preds is not None and len(preds) > 0 else 0
-        signal_map = {-1: "sell", 0: "hold", 1: "buy"}
-
-        return {
-            "regime": self.current_regime,
-            "model": type(self.active_model).__name__,
-            "signal": signal_map.get(last_pred, "hold"),
-        }
+        self.backtest_ml(n_components=n_components)
+        return self.generate_signals_ml()

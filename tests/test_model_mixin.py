@@ -5,10 +5,21 @@ import pandas as pd
 import pytest
 
 from atc_trading_bot.mixins.model_mixin import ModelMixin
+from atc_trading_bot.mixins.optimization_mixin import OptimizationMixin
 from atc_trading_bot.pipeline_warning import PipelineWarning
 
 
 class ModelBot(ModelMixin):
+    def __init__(self, **kwargs):
+        self.features_pca = kwargs.pop("features_pca", None)
+        self.features_index = kwargs.pop("features_index", None)
+        self.labels = kwargs.pop("labels", None)
+        super().__init__(**kwargs)
+
+
+class OptModelBot(ModelMixin, OptimizationMixin):
+    """Minimal class for testing train_optimized (needs both mixins)."""
+
     def __init__(self, **kwargs):
         self.features_pca = kwargs.pop("features_pca", None)
         self.features_index = kwargs.pop("features_index", None)
@@ -149,3 +160,45 @@ class TestPredict:
         bot = ModelBot()
         with pytest.warns(PipelineWarning, match="train_models"):
             bot.predict()
+
+
+class TestTrainOptimized:
+    def test_returns_self(self, ml_data):
+        X, labels, idx = ml_data
+        bot = OptModelBot(features_pca=X, labels=labels, features_index=idx)
+        result = bot.train_optimized(n_trials=3)
+        assert result is bot
+
+    def test_sets_active_model(self, ml_data):
+        X, labels, idx = ml_data
+        bot = OptModelBot(features_pca=X, labels=labels, features_index=idx)
+        bot.train_optimized(n_trials=3)
+        assert bot.active_model is not None
+
+    def test_stores_in_trained_models(self, ml_data):
+        X, labels, idx = ml_data
+        bot = OptModelBot(features_pca=X, labels=labels, features_index=idx)
+        bot.train_optimized(n_trials=3, model="lightgbm")
+        assert bot.trained_models is not None
+        assert "Lightgbm_optimized" in bot.trained_models
+
+    def test_works_after_train_models(self, ml_data):
+        X, labels, idx = ml_data
+        bot = OptModelBot(features_pca=X, labels=labels, features_index=idx)
+        bot.train_models(n_estimators=50)
+        original_model = bot.active_model
+        bot.train_optimized(n_trials=3)
+        # active_model should still be set (may or may not have changed)
+        assert bot.active_model is not None
+
+    def test_warns_without_features(self):
+        labels = pd.Series([0, 1, -1])
+        bot = OptModelBot(labels=labels)
+        with pytest.warns(PipelineWarning, match="compute_features"):
+            bot.train_optimized(n_trials=3)
+
+    def test_warns_without_labels(self):
+        X = np.random.randn(100, 5)
+        bot = OptModelBot(features_pca=X)
+        with pytest.warns(PipelineWarning, match="compute_labels"):
+            bot.train_optimized(n_trials=3)
