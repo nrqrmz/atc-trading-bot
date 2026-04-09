@@ -5,7 +5,7 @@ Algorithmic trading bot for crypto markets that detects market regimes using Hid
 ## Features
 
 - **HMM Regime Detection** — Bull/bear/sideways classification with sticky transitions and regime smoothing
-- **6 Trading Strategies** — Trend following, mean reversion, momentum, breakout, volatility, defensive
+- **7 Trading Strategies** — 6 rule-based (trend, mean reversion, momentum, breakout, volatility, defensive) + 1 ML-based
 - **Strategy Registry** — Declarative metadata per strategy (best/worst regimes, descriptions)
 - **80+ Technical Indicators** — Via `ta` library, reduced with PCA and rigorous feature curation
 - **Risk Management** — Stop-loss, take-profit, and position sizing on every strategy
@@ -19,11 +19,14 @@ Algorithmic trading bot for crypto markets that detects market regimes using Hid
 - **Ensemble Methods** — VotingClassifier + StackingClassifier (meta-learner: LogisticRegression)
 - **Bayesian Optimization** — Optuna with TPE sampler and pruning (replaces GridSearchCV)
 - **Walk-Forward Validation** — Sliding window retraining for production-grade evaluation
+- **ML Backtesting** — Backtest ML predictions through MLStrategy with full risk management
+- **ML Signal Generation** — Confidence-filtered signals via `predict_proba` with regime context
+- **Optimize & Retrain** — Chain Optuna optimization → retrain, only replace model if F1 improves
 - **SHAP Explainability** — Per-prediction explanations and global feature importance
 - **Permutation Importance** — Model-agnostic feature importance as sanity check
 - **Method Chaining** — Fluent API: `bot.fetch_data("BTC").compute_features().detect_regime()`
 - **Automatic Pagination** — Handles exchange API limits for large date ranges
-- **95% Test Coverage** — 210 tests across 15 test modules
+- **95% Test Coverage** — 230 tests across 15 test modules
 
 ## Installation
 
@@ -49,7 +52,7 @@ Or use the ML pipeline — same regime detection, but ML decides buy/sell/hold:
 ```python
 result = bot.run_pipeline_ml("BTC")
 print(result)
-# {'regime': 'bull', 'model': 'StackingClassifier', 'signal': 'buy'}
+# {'regime': 'bull', 'model': 'StackingClassifier', 'signal': 'buy', 'confidence': 0.82}
 ```
 
 Using method chaining for more control:
@@ -85,11 +88,11 @@ fetch_data → compute_features → detect_regime → select_strategy → backte
 ### ML Pipeline
 
 ```
-fetch_data → compute_features → detect_regime → compute_labels → train_models → predict
-    |              |                  |                |               |             |
-  (same)       (same)            (same)       Triple-barrier    LightGBM +      Ensemble
-                                              ATR-calibrated    CatBoost +      prediction
-                                              TP/SL/timeout     XGBoost +       (buy/sell/hold)
+fetch_data → compute_features → detect_regime → compute_labels → train_models → backtest_ml → generate_signals_ml
+    |              |                  |                |               |              |                |
+  (same)       (same)            (same)       Triple-barrier    LightGBM +      MLStrategy       Confidence
+                                              ATR-calibrated    CatBoost +      + overfit        thresholding
+                                              TP/SL/timeout     XGBoost +       detection        + predict_proba
                                                                 Voting/Stacking
 ```
 
@@ -434,7 +437,34 @@ fig.show()
 
 **Why SHAP over basic feature importance:** `model.feature_importances_` only shows which features the tree splits on most often — it's biased toward high-cardinality features and doesn't detect data leakage. SHAP provides per-prediction explanations showing exactly how each indicator pushes the prediction toward buy or sell.
 
-### 12. Rules vs ML Comparison
+### 12. ML Backtesting & Signals
+
+The `BacktestMixin` now supports ML predictions through `MLStrategy` — a backtesting.py Strategy that executes buy/sell/hold from pre-computed model predictions:
+
+```python
+# ML backtest (refits features + labels + model on train, predicts on test)
+ml_results = bot.backtest_ml(model="lightgbm")
+print(ml_results)
+# Same metrics as rule-based: Sharpe, Sortino, max drawdown, win rate, etc.
+
+# ML signals with confidence filtering (via predict_proba)
+signals = bot.generate_signals_ml(confidence_threshold=0.6)
+print(signals)
+# {'regime': 'bull', 'model': 'LGBMClassifier', 'signal': 'buy', 'confidence': 0.82}
+```
+
+### 13. Optimization → Retrain
+
+Chain hyperparameter optimization with retraining in a single call. Only replaces the active model if the optimized version beats it on out-of-sample F1:
+
+```python
+# Optimize LightGBM and retrain with best params
+bot.train_optimized(n_trials=100, model="lightgbm")
+# If optimized F1 >= current F1 → active_model is updated
+# If not → warning, current model kept
+```
+
+### 14. Rules vs ML Comparison
 
 The bot supports both pipelines so students can compare directly:
 
@@ -445,15 +475,16 @@ bot.fetch_data("BTC") \
    .detect_regime() \
    .select_strategy()
 rules_backtest = bot.backtest()
+rules_signals = bot.generate_signals()
 
 # ML pipeline (same data, same regime)
 bot.compute_labels() \
    .train_models()
-ml_predictions = bot.predict()
+ml_backtest = bot.backtest_ml()
+ml_signals = bot.generate_signals_ml()
 
-print(f"Rule-based strategy: {bot.active_strategy.__name__}")
-print(f"ML model: {type(bot.active_model).__name__}")
-print(bot.models_summary())
+print(f"Rules: {rules_signals}")
+print(f"ML:    {ml_signals}")
 ```
 
 ## Configuration
@@ -540,8 +571,9 @@ atc-trading-bot/
 │       ├── sideways_strategy.py            # Bollinger + RSI (mean reversion)
 │       ├── momentum_strategy.py            # ROC + RSI (momentum)
 │       ├── breakout_strategy.py            # Donchian + volume (breakout)
-│       └── volatility_strategy.py          # ATR mean reversion
-└── tests/                                  # 210 tests, 95% coverage
+│       ├── volatility_strategy.py          # ATR mean reversion
+│       └── ml_strategy.py                  # ML predictions → backtesting.py bridge
+└── tests/                                  # 230 tests, 95% coverage
     ├── conftest.py
     ├── test_bot.py
     ├── test_config.py
@@ -590,7 +622,7 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `DataFrame` | CPCV with per-fold metrics and Mean summary row. Index: `Fold 0`, `Fold 1`, ..., `Mean` |
 | `generate_signals(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals with HMM confidence filtering |
 | `run_pipeline(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute rule-based pipeline end-to-end (fetch → features → regime → strategy → backtest → signals) |
-| `run_pipeline_ml(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute ML pipeline end-to-end (fetch → features → regime → labels → train → predict) |
+| `run_pipeline_ml(symbol="BTC", n_components=10, n_regimes=3)` | `dict` | Execute ML pipeline end-to-end (fetch → features → regime → labels → train → backtest_ml → signals_ml) |
 
 ### Strategy Methods
 
@@ -616,6 +648,9 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 | `train_models(test_size, cv_splits, n_estimators, learning_rate, max_depth)` | `self` | Train LightGBM + CatBoost + XGBoost + Voting + Stacking. Selects best by OOS F1 |
 | `models_summary()` | `DataFrame` | Comparison of all models: accuracy, F1, precision, recall, CV F1. Indexed by model name |
 | `predict(X=None)` | `ndarray` | Predict labels (-1/0/1) using the best model. Defaults to `self.features_pca` |
+| `backtest_ml(cash, commission, test_ratio, n_components, model, leverage, stop_loss, take_profit, position_size)` | `DataFrame` | Out-of-sample backtest using ML predictions via MLStrategy. Refits entire ML pipeline on train to avoid look-ahead bias |
+| `generate_signals_ml(confidence_threshold=0.6)` | `dict` | Generate buy/sell/hold signals from ML model with confidence filtering via `predict_proba` |
+| `train_optimized(n_trials=100, model="lightgbm", test_size, cv_splits)` | `self` | Chain optimize_model → retrain with best params. Updates active_model only if F1 improves |
 | `optimize_model(n_trials=100, model="lightgbm")` | `DataFrame` | Optuna Bayesian optimization. Returns best params indexed by param name |
 | `walk_forward(window_size=252, step_size=21)` | `DataFrame` | Sliding window walk-forward validation with per-window metrics + Mean row |
 
@@ -683,14 +718,16 @@ Set by the pipeline as each step executes. All start as `None` until their corre
 
 | Attribute | Type | Description |
 |---|---|---|
-| `results` | `DataFrame \| None` | Backtest results with columns `metric`, `value`, `description`. Set by `backtest()` |
+| `results` | `DataFrame \| None` | Rule-based backtest results with columns `metric`, `value`, `description`. Set by `backtest()` |
+| `ml_results` | `DataFrame \| None` | ML backtest results (same format as `results`). Set by `backtest_ml()` |
 | `cv_results` | `DataFrame \| None` | CPCV results with one row per fold plus a Mean summary row. Columns: `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `win_rate`, `profit_factor`, `total_return`, `num_trades`. Index: fold labels. Set by `cross_validate_cpcv()` |
 
 #### Signals (set by `SignalMixin` via `generate_signals()`)
 
 | Attribute | Type | Description |
 |---|---|---|
-| `signals` | `dict \| None` | `{"regime": str, "strategy": str, "signal": "buy"\|"sell"\|"hold", "confidence": float}` |
+| `signals` | `dict \| None` | `{"regime": str, "strategy": str, "signal": "buy"\|"sell"\|"hold", "confidence": float}`. Set by `generate_signals()` |
+| `ml_signals` | `dict \| None` | `{"regime": str, "model": str, "signal": "buy"\|"sell"\|"hold", "confidence": float}`. Set by `generate_signals_ml()` |
 
 #### Labels (set by `LabelingMixin` via `compute_labels()`)
 
@@ -744,7 +781,7 @@ pytest tests/test_regime_mixin.py -v
 - **[Optuna](https://optuna.org)** — Bayesian hyperparameter optimization (TPE + pruning)
 - **[SHAP](https://shap.readthedocs.io)** — Model explainability (per-prediction and global)
 - **[Plotly](https://plotly.com/python/)** — Interactive charts (`plotly_dark` template)
-- **[pytest](https://pytest.org)** — Testing framework (210 tests, 95% coverage)
+- **[pytest](https://pytest.org)** — Testing framework (230 tests, 95% coverage)
 
 ## License
 
