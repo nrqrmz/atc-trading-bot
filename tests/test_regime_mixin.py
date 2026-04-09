@@ -128,6 +128,37 @@ class TestRegimeMixin:
         assert bull_section.count("bull") > n_third * 0.4
         assert bear_section.count("bear") > n_third * 0.4
 
+    def test_override_regime_sets_current(self):
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
+        bot.detect_regime()
+        original = bot.current_regime
+
+        target = "bear" if original != "bear" else "bull"
+        bot.override_regime(target)
+        assert bot.current_regime == target
+
+    def test_override_regime_returns_self(self):
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
+        bot.detect_regime()
+        result = bot.override_regime("sideways")
+        assert result is bot
+
+    def test_override_regime_invalid_raises(self):
+        bot = RegimeBot()
+        bot.current_regime = "bull"
+        with pytest.raises(ValueError, match="Invalid regime"):
+            bot.override_regime("crash")
+
+    def test_override_regime_preserves_regimes_list(self):
+        features_pca, df = _make_synthetic_features_and_df()
+        bot = RegimeBot(df=df, features_pca=features_pca, features_index=df.index)
+        bot.detect_regime()
+        original_regimes = list(bot.regimes)
+        bot.override_regime("bear")
+        assert bot.regimes == original_regimes
+
     def test_regime_mapping_uses_aligned_returns(self):
         """Regime mapping should use features_index-aligned Close prices."""
         np.random.seed(42)

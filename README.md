@@ -166,6 +166,22 @@ fig.show()
 
 **Regime smoothing:** Short-lived regimes (< 5 bars) are replaced with the previous regime to reduce noise and avoid whipsaw strategy switching.
 
+**Manual override:** The HMM has inherent lag — sticky transitions and smoothing mean it takes a few bars to recognize a regime change. If you disagree with the detected regime after inspecting the chart, override it:
+
+```python
+bot.detect_regime()
+fig = bot.plot_regimes()
+fig.show()
+
+# HMM says "sideways" but the chart clearly shows a breakout → override
+bot.override_regime("bull")
+
+# Continue with the corrected regime
+bot.select_strategy()
+```
+
+Only `current_regime` changes — the HMM model and historical regime labels are preserved.
+
 ### 4. Strategy Selection
 
 The `StrategyMixin` uses a declarative registry to map regimes to strategies.
@@ -617,6 +633,7 @@ These methods form the core pipeline. All return `self` for method chaining (exc
 | `fetch_data(symbol, timeframe, since)` | `self` | Fetch OHLCV data with automatic pagination. `symbol` accepts short (`"BTC"`) or full (`"BTC/USDT"`) format. `since` is ISO 8601 (`"2024-01-01T00:00:00Z"`). |
 | `compute_features(n_components=10)` | `self` | Compute 80+ TA indicators, curate, standardize, and reduce with PCA |
 | `detect_regime(n_regimes=3, n_iter=100)` | `self` | Train Gaussian HMM with sticky transitions and classify regimes |
+| `override_regime(regime)` | `self` | Manually override the detected regime after inspecting `plot_regimes()`. Accepts `"bull"`, `"bear"`, or `"sideways"` |
 | `select_strategy()` | `self` | Pick the default strategy for the current regime from the registry |
 | `backtest(strategy, cash, commission, test_ratio, n_components, n_regimes, leverage, stop_loss, take_profit, position_size)` | `DataFrame` | Out-of-sample backtest with train/test split, risk management, and overfitting detection |
 | `cross_validate_cpcv(n_splits, purge_gap, embargo_pct, n_components, n_regimes, cash, commission)` | `DataFrame` | CPCV with per-fold metrics and Mean summary row. Index: `Fold 0`, `Fold 1`, ..., `Mean` |

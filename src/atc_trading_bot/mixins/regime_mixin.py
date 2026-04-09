@@ -147,6 +147,25 @@ class RegimeMixin:
         covars = n * n_features * (n_features + 1) // 2
         return start + trans + means + covars
 
+    def override_regime(self, regime: str):
+        """Override the detected regime with a manual classification.
+
+        Use this after inspecting ``plot_regimes()`` to correct the HMM's
+        classification when you disagree with the detected regime.
+
+        Args:
+            regime: One of ``"bull"``, ``"bear"``, ``"sideways"``.
+
+        Returns:
+            self for method chaining.
+        """
+        if regime not in self.REGIME_LABELS:
+            raise ValueError(
+                f"Invalid regime: '{regime}'. Must be one of {self.REGIME_LABELS}"
+            )
+        self.current_regime = regime
+        return self
+
     def plot_regimes(self):
         """Plot price with background colored by detected regime.
 
