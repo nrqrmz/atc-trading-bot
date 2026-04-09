@@ -195,17 +195,18 @@ class VisualizationMixin:
 
         import plotly.graph_objects as go
 
-        # Aggregate absolute loadings across all components
-        loadings = np.abs(pca.components_)
-        # Weight by explained variance ratio
-        weighted = loadings * pca.explained_variance_ratio_[:, np.newaxis]
+        # Squared loadings weighted by explained variance (standard PCA importance)
+        loadings_sq = pca.components_ ** 2
+        weighted = loadings_sq * pca.explained_variance_ratio_[:, np.newaxis]
         importance = weighted.sum(axis=0)
+        total_var = pca.explained_variance_ratio_.sum()
+        importance_pct = (importance / total_var) * 100
 
         # Sort and take top_n
         col_names = features.columns.tolist()
-        sorted_idx = np.argsort(importance)[::-1][:top_n]
+        sorted_idx = np.argsort(importance_pct)[::-1][:top_n]
         top_names = [col_names[i] for i in sorted_idx]
-        top_values = importance[sorted_idx]
+        top_values = importance_pct[sorted_idx]
 
         fig = go.Figure(go.Bar(
             x=top_values[::-1],
@@ -214,10 +215,9 @@ class VisualizationMixin:
             marker_color="#3498db",
         ))
 
-        total_var = pca.explained_variance_ratio_.sum() * 100
         fig.update_layout(
-            title=f"Feature Importance (PCA, {pca.n_components_} components, {total_var:.1f}% variance)",
-            xaxis_title="Weighted Loading",
+            title=f"Feature Importance (PCA, {pca.n_components_} components, {total_var * 100:.1f}% variance)",
+            xaxis_title="Contribution (%)",
             template="plotly_dark",
             height=max(400, top_n * 25),
         )

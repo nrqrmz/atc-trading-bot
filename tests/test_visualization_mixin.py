@@ -157,3 +157,12 @@ class TestPlotFeatureImportance:
         fig = bot.plot_feature_importance(top_n=5)
         # Bar chart should have 5 bars
         assert len(fig.data[0].y) == 5
+
+    def test_values_are_percentages(self, sample_pca_and_features):
+        pca, features = sample_pca_and_features
+        bot = VizBot(pca=pca, features=features)
+        fig = bot.plot_feature_importance(top_n=5)
+        values = list(fig.data[0].x)
+        # Values should be percentages (positive, bounded)
+        assert all(v > 0 for v in values)
+        assert all(v <= 100 for v in values)
